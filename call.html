@@ -2,30 +2,48 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Llamada de Voz Segura</title>
+  <style>
+    body { font-family: sans-serif; margin: 1rem; }
+    h2 { color: #007AFF; }
+    .section { margin-bottom: 1.5rem; }
+    input { padding: .5rem; border-radius: 5px; border: 1px solid #ccc; width: 200px; }
+    button { padding: .5rem 1rem; margin-left: .5rem; border: none; border-radius: 5px;
+             background: #007AFF; color: #fff; cursor: pointer; }
+    button:disabled { background: #aaa; cursor: default; }
+    #status { margin-top: 1rem; font-weight: bold; }
+  </style>
 </head>
 <body>
+
   <h2>Llamada de Ayuda</h2>
 
-  <div>
-    <h3>1. Crear Sala (para quien ofrece ayuda)</h3>
-    <input type="text" id="roomCodeCreate" placeholder="Código único (elige uno fácil)">
-    <button onclick="startCall()">Crear sala</button>
+  <div class="section">
+    <h3>1. Crear Sala (asistente)</h3>
+    <input type="text" id="createCode" placeholder="Código único">
+    <button id="btnCreate">Crear sala</button>
   </div>
 
-  <div>
-    <h3>2. Unirse a Sala (para quien necesita ayuda)</h3>
-    <input type="text" id="roomCodeJoin" placeholder="Código que te dio el asistente">
-    <button onclick="answerCall()">Unirse a sala</button>
+  <div class="section">
+    <h3>2. Unirse a Sala (usuario)</h3>
+    <input type="text" id="joinCode" placeholder="Código recibido">
+    <button id="btnJoin">Unirse a sala</button>
   </div>
 
-  <p id="status">Estado: Esperando acción...</p>
-  <button onclick="hangUp()">Finalizar Llamada</button>
+  <div class="section">
+    <button id="btnHangup" disabled>Finalizar Llamada</button>
+    <p id="status">Estado: Esperando acción...</p>
+  </div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue, remove, push, onChildAdded, get } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import {
+      getDatabase, ref, set, push, onValue,
+      onChildAdded, get, remove
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
+    // --- Configuración Firebase ---
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
       authDomain: "the-pic-c437e.firebaseapp.com",
@@ -35,104 +53,195 @@
       messagingSenderId: "750954597180",
       appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-    let pc = new RTCPeerConnection(servers);
-    let localStream;
-    let roomCode = "";
-
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
-      localStream = stream;
-      localStream.getTracks().forEach(track => pc.addTrack(track, stream));
-    });
-
-    pc.ontrack = event => {
-      const remoteAudio = new Audio();
-      remoteAudio.srcObject = event.streams[0];
-      remoteAudio.play();
+    // --- ICE servers robustos (STUN + TURN) ---
+    // REEMPLAZA los datos de TURN con tu servidor TURN real
+    const iceConfig = {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        {
+          urls: "turn:TU_SERVIDOR_TURN:3478",
+          username: "TU_USUARIO_TURN",
+          credential: "TU_CREDENCIAL_TURN"
+        }
+      ]
     };
 
-    async function startCall() {
-      roomCode = document.getElementById("roomCodeCreate").value.trim();
-      if (!roomCode) {
-        alert("Por favor, ingresa un código para la sala.");
-        return;
+    // --- Variables WebRTC ---
+    let pc;
+    let localStream;
+    let roomCode = "";
+    let isCaller = false;
+
+    // Referencias a DOM
+    const btnCreate = document.getElementById("btnCreate");
+    const btnJoin   = document.getElementById("btnJoin");
+    const btnHangup = document.getElementById("btnHangup");
+    const statusEl  = document.getElementById("status");
+
+    // Obtener audio local y preparar stream
+    async function initLocalStream() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } catch (e) {
+        alert("No se pudo acceder al micrófono. Revisa permisos.");
+        throw e;
+      }
+    }
+
+    // Crea nueva instancia de RTCPeerConnection y agrega handlers
+    function createPeerConnection() {
+      pc = new RTCPeerConnection(iceConfig);
+
+      // Agregar audio local
+      if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
       }
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      await set(ref(db, `calls/${roomCode}/offer`), JSON.stringify(offer));
+      // Reproducir audio remoto
+      pc.ontrack = e => {
+        const audio = new Audio();
+        audio.srcObject = e.streams[0];
+        audio.play().catch(console.error);
+      };
 
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          const candidateRef = ref(db, `calls/${roomCode}/callerCandidates`);
-          push(candidateRef, JSON.stringify(event.candidate));
+      // ICE candidates
+      pc.onicecandidate = e => {
+        if (e.candidate && roomCode) {
+          const path = isCaller
+            ? `calls/${roomCode}/callerCandidates`
+            : `calls/${roomCode}/calleeCandidates`;
+          push(ref(db, path), JSON.stringify(e.candidate))
+            .catch(err => console.error("Error push ICE:", err));
         }
       };
 
-      const answerRef = ref(db, `calls/${roomCode}/answer`);
-      onValue(answerRef, async snapshot => {
-        if (snapshot.exists()) {
-          const answer = JSON.parse(snapshot.val());
-          await pc.setRemoteDescription(answer);
-          document.getElementById("status").innerText = "Llamada conectada con éxito.";
-        }
-      });
-
-      const remoteCandidatesRef = ref(db, `calls/${roomCode}/calleeCandidates`);
-      onChildAdded(remoteCandidatesRef, async snapshot => {
-        const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
-        await pc.addIceCandidate(candidate);
-      });
-
-      document.getElementById("status").innerText = "Sala creada, esperando conexión...";
-    }
-
-    async function answerCall() {
-      roomCode = document.getElementById("roomCodeJoin").value.trim();
-      if (!roomCode) {
-        alert("Por favor, ingresa el código de la sala.");
-        return;
-      }
-
-      const offerSnap = await get(ref(db, `calls/${roomCode}/offer`));
-      if (!offerSnap.exists()) {
-        alert("No se encontró una sala con ese código.");
-        return;
-      }
-
-      const offer = JSON.parse(offerSnap.val());
-      await pc.setRemoteDescription(offer);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await set(ref(db, `calls/${roomCode}/answer`), JSON.stringify(answer));
-
-      pc.onicecandidate = event => {
-        if (event.candidate) {
-          const calleeCandRef = ref(db, `calls/${roomCode}/calleeCandidates`);
-          push(calleeCandRef, JSON.stringify(event.candidate));
+      // Monitoreo de estado ICE
+      pc.oniceconnectionstatechange = () => {
+        console.log("ICE state:", pc.iceConnectionState);
+        if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+          status("Error de conexión. Reinicia la llamada.");
+          btnHangup.disabled = false;
         }
       };
-
-      const callerCandidatesRef = ref(db, `calls/${roomCode}/callerCandidates`);
-      onChildAdded(callerCandidatesRef, async snapshot => {
-        const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
-        await pc.addIceCandidate(candidate);
-      });
-
-      document.getElementById("status").innerText = "Conectando...";
     }
 
-    function hangUp() {
+    // Actualiza estado en UI
+    function status(text) {
+      statusEl.textContent = "Estado: " + text;
+    }
+
+    // Habilita/deshabilita botones
+    function toggleButtons(disabled) {
+      btnCreate.disabled = disabled;
+      btnJoin.disabled   = disabled;
+    }
+
+    // Reinicia todo para nueva llamada
+    function reset() {
+      if (pc) pc.close();
+      roomCode = "";
+      isCaller = false;
+      toggleButtons(false);
+      btnHangup.disabled = true;
+      status("Esperando acción...");
+      createPeerConnection();
+    }
+
+    // Crear sala (caller)
+    btnCreate.onclick = async () => {
+      try {
+        await initLocalStream();
+        isCaller = true;
+        roomCode = document.getElementById("createCode").value.trim();
+        if (!roomCode) return alert("Ingresa un código para la sala.");
+        toggleButtons(true);
+        status("Creando sala…");
+        createPeerConnection();
+
+        // Crear offer
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await set(ref(db, `calls/${roomCode}/offer`), JSON.stringify(offer));
+
+        // Escuchar answer
+        onValue(ref(db, `calls/${roomCode}/answer`), async snap => {
+          if (!snap.exists()) return;
+          const ans = JSON.parse(snap.val());
+          await pc.setRemoteDescription(ans);
+          status("Conectado 🎉");
+          btnHangup.disabled = false;
+        });
+
+        // Escuchar candidatos del callee
+        onChildAdded(ref(db, `calls/${roomCode}/calleeCandidates`),
+          async snap => {
+            const cand = new RTCIceCandidate(JSON.parse(snap.val()));
+            await pc.addIceCandidate(cand);
+          });
+
+        status("Sala creada. Esperando conexión…");
+      } catch (err) {
+        console.error(err);
+        alert("Error al crear sala.");
+        reset();
+      }
+    };
+
+    // Unirse a sala (callee)
+    btnJoin.onclick = async () => {
+      try {
+        await initLocalStream();
+        isCaller = false;
+        roomCode = document.getElementById("joinCode").value.trim();
+        if (!roomCode) return alert("Ingresa el código de la sala.");
+        toggleButtons(true);
+        status("Uniéndose a sala…");
+        createPeerConnection();
+
+        // Obtener offer
+        const offerSnap = await get(ref(db, `calls/${roomCode}/offer`));
+        if (!offerSnap.exists()) {
+          alert("Sala no encontrada.");
+          reset();
+          return;
+        }
+        const offer = JSON.parse(offerSnap.val());
+        await pc.setRemoteDescription(offer);
+
+        // Crear y enviar answer
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await set(ref(db, `calls/${roomCode}/answer`), JSON.stringify(answer));
+
+        // Escuchar candidatos del caller
+        onChildAdded(ref(db, `calls/${roomCode}/callerCandidates`),
+          async snap => {
+            const cand = new RTCIceCandidate(JSON.parse(snap.val()));
+            await pc.addIceCandidate(cand);
+          });
+
+        status("Conectando…");
+        btnHangup.disabled = false;
+      } catch (err) {
+        console.error(err);
+        alert("Error al unirse a la sala.");
+        reset();
+      }
+    };
+
+    // Colgar llamada
+    btnHangup.onclick = () => {
       pc.close();
-      if (roomCode) {
-        remove(ref(db, `calls/${roomCode}`));
-      }
-      document.getElementById("status").innerText = "Llamada finalizada.";
-    }
+      remove(ref(db, `calls/${roomCode}`));
+      status("Llamada finalizada.");
+      reset();
+    };
+
+    // Inicialización
+    createPeerConnection();
   </script>
 </body>
 </html>
