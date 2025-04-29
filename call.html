@@ -2,14 +2,25 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Llamada de Voz</title>
+  <title>Llamada de Voz Segura</title>
 </head>
 <body>
-  <h2>Llamada de Voz</h2>
-  <p id="status">Esperando conexión...</p>
-  <button onclick="startCall()">Iniciar llamada</button>
-  <button onclick="answerCall()">Responder llamada</button>
-  <button onclick="hangUp()">Finalizar</button>
+  <h2>Llamada de Ayuda</h2>
+
+  <div>
+    <h3>1. Crear Sala (para quien ofrece ayuda)</h3>
+    <input type="text" id="roomCodeCreate" placeholder="Código único (elige uno fácil)">
+    <button onclick="startCall()">Crear sala</button>
+  </div>
+
+  <div>
+    <h3>2. Unirse a Sala (para quien necesita ayuda)</h3>
+    <input type="text" id="roomCodeJoin" placeholder="Código que te dio el asistente">
+    <button onclick="answerCall()">Unirse a sala</button>
+  </div>
+
+  <p id="status">Estado: Esperando acción...</p>
+  <button onclick="hangUp()">Finalizar Llamada</button>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -31,6 +42,7 @@
     const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
     let pc = new RTCPeerConnection(servers);
     let localStream;
+    let roomCode = "";
 
     navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
       localStream = stream;
@@ -43,64 +55,83 @@
       remoteAudio.play();
     };
 
-    pc.onicecandidate = event => {
-      if (event.candidate) {
-        const candidateRef = ref(db, "calls/caller/candidates");
-        push(candidateRef, JSON.stringify(event.candidate));
-      }
-    };
-
     async function startCall() {
+      roomCode = document.getElementById("roomCodeCreate").value.trim();
+      if (!roomCode) {
+        alert("Por favor, ingresa un código para la sala.");
+        return;
+      }
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      await set(ref(db, "calls/caller/offer"), JSON.stringify(offer));
+      await set(ref(db, `calls/${roomCode}/offer`), JSON.stringify(offer));
 
-      const answerRef = ref(db, "calls/callee/answer");
+      pc.onicecandidate = event => {
+        if (event.candidate) {
+          const candidateRef = ref(db, `calls/${roomCode}/callerCandidates`);
+          push(candidateRef, JSON.stringify(event.candidate));
+        }
+      };
+
+      const answerRef = ref(db, `calls/${roomCode}/answer`);
       onValue(answerRef, async snapshot => {
         if (snapshot.exists()) {
           const answer = JSON.parse(snapshot.val());
           await pc.setRemoteDescription(answer);
-          document.getElementById("status").innerText = "Conectado";
+          document.getElementById("status").innerText = "Llamada conectada con éxito.";
         }
       });
 
-      const calleeCandidatesRef = ref(db, "calls/callee/candidates");
-      onChildAdded(calleeCandidatesRef, async snapshot => {
+      const remoteCandidatesRef = ref(db, `calls/${roomCode}/calleeCandidates`);
+      onChildAdded(remoteCandidatesRef, async snapshot => {
         const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
         await pc.addIceCandidate(candidate);
       });
+
+      document.getElementById("status").innerText = "Sala creada, esperando conexión...";
     }
 
     async function answerCall() {
-      const offerSnap = await get(ref(db, "calls/caller/offer"));
-      if (offerSnap.exists()) {
-        const offer = JSON.parse(offerSnap.val());
-        await pc.setRemoteDescription(offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await set(ref(db, "calls/callee/answer"), JSON.stringify(answer));
+      roomCode = document.getElementById("roomCodeJoin").value.trim();
+      if (!roomCode) {
+        alert("Por favor, ingresa el código de la sala.");
+        return;
       }
+
+      const offerSnap = await get(ref(db, `calls/${roomCode}/offer`));
+      if (!offerSnap.exists()) {
+        alert("No se encontró una sala con ese código.");
+        return;
+      }
+
+      const offer = JSON.parse(offerSnap.val());
+      await pc.setRemoteDescription(offer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await set(ref(db, `calls/${roomCode}/answer`), JSON.stringify(answer));
 
       pc.onicecandidate = event => {
         if (event.candidate) {
-          const calleeCandRef = ref(db, "calls/callee/candidates");
+          const calleeCandRef = ref(db, `calls/${roomCode}/calleeCandidates`);
           push(calleeCandRef, JSON.stringify(event.candidate));
         }
       };
 
-      const callerCandidatesRef = ref(db, "calls/caller/candidates");
+      const callerCandidatesRef = ref(db, `calls/${roomCode}/callerCandidates`);
       onChildAdded(callerCandidatesRef, async snapshot => {
         const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
         await pc.addIceCandidate(candidate);
       });
 
-      document.getElementById("status").innerText = "Llamando...";
+      document.getElementById("status").innerText = "Conectando...";
     }
 
     function hangUp() {
       pc.close();
-      remove(ref(db, "calls"));
-      document.getElementById("status").innerText = "Llamada finalizada";
+      if (roomCode) {
+        remove(ref(db, `calls/${roomCode}`));
+      }
+      document.getElementById("status").innerText = "Llamada finalizada.";
     }
   </script>
 </body>
