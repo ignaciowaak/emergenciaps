@@ -10,14 +10,14 @@
     input, button { padding: .5rem; margin: .5rem 0; }
     input { width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 5px; }
     button { background: #007AFF; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
+    audio { display: block; margin-top: 1rem; width: 100%; max-width: 300px; }
   </style>
 </head>
 <body>
   <h2>Ingresar a Sala</h2>
   <input type="text" id="joinInput" placeholder="Código de sala">
   <button id="joinBtn">Unirse</button>
-
-  <script type="module">
+  <audio id="remoteAudioJoin" controls autoplay hidden></audio>  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getDatabase, ref, get, set, push, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
@@ -41,8 +41,9 @@
     };
 
     let pc, localStream, roomCode = "";
-    const joinInput = document.getElementById("joinInput");
-    const joinBtn   = document.getElementById("joinBtn");
+    const joinInput   = document.getElementById("joinInput");
+    const joinBtn     = document.getElementById("joinBtn");
+    const remoteAudio = document.getElementById("remoteAudioJoin");
 
     async function initLocal() {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -51,15 +52,15 @@
     function createPC() {
       pc = new RTCPeerConnection(iceConfig);
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+      pc.ontrack = e => {
+        remoteAudio.hidden = false;
+        remoteAudio.srcObject = e.streams[0];
+      };
+
       pc.onicecandidate = e => {
         if (e.candidate)
-          push(ref(db, `calls/${roomCode}/calleeCandidates`),
-               JSON.stringify(e.candidate));
-      };
-      pc.ontrack = e => {
-        const audio = new Audio();
-        audio.srcObject = e.streams[0];
-        audio.play();
+          push(ref(db, `calls/${roomCode}/calleeCandidates`), JSON.stringify(e.candidate));
       };
     }
 
@@ -72,10 +73,7 @@
         createPC();
 
         const offerSnap = await get(ref(db, `calls/${roomCode}/offer`));
-        if (!offerSnap.exists()) {
-          alert("Sala no existe.");
-          return;
-        }
+        if (!offerSnap.exists()) return alert("Sala no existe.");
         await pc.setRemoteDescription(JSON.parse(offerSnap.val()));
 
         const answer = await pc.createAnswer();
@@ -90,6 +88,5 @@
         alert("Error al unirse a la sala.");
       }
     };
-  </script>
-</body>
+  </script></body>
 </html>
