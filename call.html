@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Llamada de Voz</title>
+</head>
+<body>
+  <h2>Llamada de Voz</h2>
+  <p id="status">Esperando conexión...</p>
+  <button onclick="startCall()">Iniciar llamada</button>
+  <button onclick="answerCall()">Responder llamada</button>
+  <button onclick="hangUp()">Finalizar</button>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getDatabase, ref, set, onValue, remove, push, onChildAdded, get } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
+      authDomain: "the-pic-c437e.firebaseapp.com",
+      databaseURL: "https://the-pic-c437e-default-rtdb.firebaseio.com",
+      projectId: "the-pic-c437e",
+      storageBucket: "the-pic-c437e.appspot.com",
+      messagingSenderId: "750954597180",
+      appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    let pc = new RTCPeerConnection(servers);
+    let localStream;
+
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
+      localStream = stream;
+      localStream.getTracks().forEach(track => pc.addTrack(track, stream));
+    });
+
+    pc.ontrack = event => {
+      const remoteAudio = new Audio();
+      remoteAudio.srcObject = event.streams[0];
+      remoteAudio.play();
+    };
+
+    pc.onicecandidate = event => {
+      if (event.candidate) {
+        const candidateRef = ref(db, "calls/caller/candidates");
+        push(candidateRef, JSON.stringify(event.candidate));
+      }
+    };
+
+    async function startCall() {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await set(ref(db, "calls/caller/offer"), JSON.stringify(offer));
+
+      const answerRef = ref(db, "calls/callee/answer");
+      onValue(answerRef, async snapshot => {
+        if (snapshot.exists()) {
+          const answer = JSON.parse(snapshot.val());
+          await pc.setRemoteDescription(answer);
+          document.getElementById("status").innerText = "Conectado";
+        }
+      });
+
+      const calleeCandidatesRef = ref(db, "calls/callee/candidates");
+      onChildAdded(calleeCandidatesRef, async snapshot => {
+        const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
+        await pc.addIceCandidate(candidate);
+      });
+    }
+
+    async function answerCall() {
+      const offerSnap = await get(ref(db, "calls/caller/offer"));
+      if (offerSnap.exists()) {
+        const offer = JSON.parse(offerSnap.val());
+        await pc.setRemoteDescription(offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await set(ref(db, "calls/callee/answer"), JSON.stringify(answer));
+      }
+
+      pc.onicecandidate = event => {
+        if (event.candidate) {
+          const calleeCandRef = ref(db, "calls/callee/candidates");
+          push(calleeCandRef, JSON.stringify(event.candidate));
+        }
+      };
+
+      const callerCandidatesRef = ref(db, "calls/caller/candidates");
+      onChildAdded(callerCandidatesRef, async snapshot => {
+        const candidate = new RTCIceCandidate(JSON.parse(snapshot.val()));
+        await pc.addIceCandidate(candidate);
+      });
+
+      document.getElementById("status").innerText = "Llamando...";
+    }
+
+    function hangUp() {
+      pc.close();
+      remove(ref(db, "calls"));
+      document.getElementById("status").innerText = "Llamada finalizada";
+    }
+  </script>
+</body>
+</html>
