@@ -11,6 +11,7 @@
     input { width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 5px; }
     button { background: #007AFF; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
     #codeDisplay { font-weight: bold; margin-top: 1rem; }
+    audio { display: block; margin-top: 1rem; width: 100%; max-width: 300px; }
   </style>
 </head>
 <body>
@@ -18,6 +19,7 @@
   <input type="text" id="roomInput" placeholder="Ingresa un código único">
   <button id="createBtn">Crear Sala</button>
   <p id="codeDisplay" hidden>Sala creada: <span id="roomCode"></span></p>
+  <audio id="remoteAudioAdmin" controls autoplay hidden></audio>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -48,6 +50,7 @@
     const createBtn   = document.getElementById("createBtn");
     const codeDisplay = document.getElementById("codeDisplay");
     const roomCodeSpan= document.getElementById("roomCode");
+    const remoteAudio = document.getElementById("remoteAudioAdmin");
 
     async function initLocal() {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -56,15 +59,16 @@
     function createPC() {
       pc = new RTCPeerConnection(iceConfig);
       localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+      pc.ontrack = e => {
+        remoteAudio.hidden = false;
+        remoteAudio.srcObject = e.streams[0];
+      };
+
       pc.onicecandidate = e => {
         if (e.candidate)
           push(ref(db, `calls/${roomCode}/callerCandidates`),
                JSON.stringify(e.candidate));
-      };
-      pc.ontrack = e => {
-        const audio = new Audio();
-        audio.srcObject = e.streams[0];
-        audio.play();
       };
     }
 
