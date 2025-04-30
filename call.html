@@ -36,7 +36,7 @@
     <div class="card">
       <h2>Solicitud de Emergencia</h2>
       <input id="userName" type="text" placeholder="Tu Nombre" />
-      <input id="message" type="text" placeholder="Describe tu emergencia" />
+      <input id="messageText" type="text" placeholder="Describe tu emergencia" />
       <select id="requestType">
         <option value="chat">Chat</option>
         <option value="call">Llamada</option>
@@ -67,7 +67,6 @@
   </div>  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getDatabase, ref, push, serverTimestamp, onChildAdded, onValue, off } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
-    import { RTCPeerConnection, RTCSessionDescription } from "wrtc";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
@@ -81,80 +80,153 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const views = { home: 'homeView', waiting: 'waitingView', chat: 'chatView', call: 'callView' };
-    function show(v) { Object.values(views).forEach(id=>document.getElementById(id).classList.remove('active')); document.getElementById(views[v]).classList.add('active'); }
-
-    let roomKey, requestType, userName;
-    let pc;
-
-    document.getElementById('makeRequestBtn').onclick = async ()=>{
-      userName = document.getElementById('userName').value.trim();
-      const msg = document.getElementById('message').value.trim();
-      requestType = document.getElementById('requestType').value;
-      if(!userName||!msg){return alert('Completa nombre y mensaje');}
-      const newRef = await push(ref(db, 'requests'), { user:userName, message:msg, type:requestType, timestamp:serverTimestamp() });
-      roomKey = newRef.key;
-      show('waiting'); monitor();
+    // Vistas
+    const views = {
+      home: document.getElementById('homeView'),
+      waiting: document.getElementById('waitingView'),
+      chat: document.getElementById('chatView'),
+      call: document.getElementById('callView')
     };
+    function show(view) { Object.values(views).forEach(v=>v.classList.remove('active')); views[view].classList.add('active'); }
 
-    function monitor(){
-      const reqRef = ref(db, `requests/${roomKey}`);
-      const chatRef = ref(db, `chats/${roomKey}`);
-      const callRef = ref(db, `calls/${roomKey}`);
+    // Elementos de la UI
+    const userNameInput = document.getElementById('userName');
+    const messageInput = document.getElementById('messageText');
+    const requestTypeSelect = document.getElementById('requestType');
+    const makeRequestBtn = document.getElementById('makeRequestBtn');
 
-      onChildAdded(chatRef, ()=>{ show('chat'); setupChat(chatRef); });
-      onValue(reqRef, snap=>{ if(!snap.exists()&&requestType==='call'){ show('call'); setupCall(callRef); }});
-      onChildAdded(callRef, ()=>{ show('call'); setupCall(callRef); });
+    const roomKeyChat = document.getElementById('roomKeyChat');
+    const userMessagesEl = document.getElementById('userMessages');
+    const userChatInput = document.getElementById('userChatInput');
+    const sendUserChatBtn = document.getElementById('sendUserChatBtn');
+    const endUserChatBtn = document.getElementById('endUserChatBtn');
+
+    const roomKeyCall = document.getElementById('roomKeyCall');
+    const userRemoteAudio = document.getElementById('userRemoteAudio');
+    const userHangUpBtn = document.getElementById('userHangUpBtn');
+
+    let activeRoomKey = '';
+    let activeRequestType = '';
+    let userName = '';
+    let listeners = [];
+
+    // Enviar solicitud
+    makeRequestBtn.addEventListener('click', async () => {
+      userName = userNameInput.value.trim();
+      const text = messageInput.value.trim();
+      activeRequestType = requestTypeSelect.value;
+      if (!userName || !text) return alert('Completa nombre y emergencia');
+      makeRequestBtn.disabled = true;
+      try {
+        const newRef = await push(ref(db, 'requests'), {
+          user: userName,
+          message: text,
+          type: activeRequestType,
+          timestamp: serverTimestamp()
+        });
+        activeRoomKey = newRef.key;
+        show('waiting');
+        monitor();
+      } catch (e) {
+        console.error(e);
+        alert('Error al enviar solicitud');
+      } finally {
+        makeRequestBtn.disabled = false;
+      }
+    });
+
+    function monitor() {
+      const reqRef = ref(db, `requests/${activeRoomKey}`);
+      const chatRef = ref(db, `chats/${activeRoomKey}`);
+      const callRef = ref(db, `calls/${activeRoomKey}`);
+
+      // Chat iniciado
+      const chatInit = onChildAdded(chatRef, snap => {
+        cleanup();
+        initChat(chatRef);
+      }); listeners.push(chatInit);
+
+      // Llamada iniciada por remoción de request
+      const reqRem = onValue(reqRef, snap => {
+        if (!snap.exists() && activeRequestType === 'call') {
+          cleanup();
+          initCall(callRef);
+        }
+      }); listeners.push(reqRem);
+
+      // Llamada iniciada por nodo en calls
+      const callInit = onChildAdded(callRef, snap => {
+        cleanup();
+        initCall(callRef);
+      }); listeners.push(callInit);
     }
 
-    function setupChat(chatRef){
-      document.getElementById('roomKeyChat').textContent = roomKey;
-      onChildAdded(chatRef, snap=>{
-        const m=snap.val(); const d=document.createElement('div');
-        d.className = m.sender==='user'?'message sent':'message received';
-        d.innerHTML = `<span>${m.sender}</span><br>${m.text}`;
-        document.getElementById('userMessages').append(d);
-      });
-      document.getElementById('sendUserChatBtn').onclick=()=>{
-        const t=document.getElementById('userChatInput').value.trim(); if(!t) return;
-        push(chatRef,{ sender:'user', text:t, timestamp:serverTimestamp() });
-        document.getElementById('userChatInput').value='';
+    function initChat(chatRef) {
+      show('chat');
+      roomKeyChat.textContent = activeRoomKey;
+      const msgListener = onChildAdded(chatRef, snap => {
+        const m = snap.val();
+        const div = document.createElement('div');
+        div.className = m.sender === 'user' ? 'message sent' : 'message received';
+        div.innerHTML = `<span>${m.sender === 'user' ? userName : 'Admin'}</span><br>${m.text}`;
+        userMessagesEl.append(div);
+        userMessagesEl.scrollTop = userMessagesEl.scrollHeight;
+      }); listeners.push(msgListener);
+
+      sendUserChatBtn.onclick = async () => {
+        const txt = userChatInput.value.trim(); if (!txt) return;
+        await push(chatRef, { sender: 'user', text: txt, timestamp: serverTimestamp() });
+        userChatInput.value = '';
       };
-      document.getElementById('endUserChatBtn').onclick=()=>show('home');
+
+      endUserChatBtn.onclick = () => { cleanup(); show('home'); };
     }
 
-    async function setupCall(callRef){
-      document.getElementById('roomKeyCall').textContent = roomKey;
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio:true });
-      pc = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'}] });
-      localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
+    function initCall(callRef) {
+      show('call');
+      roomKeyCall.textContent = activeRoomKey;
+      userRemoteAudio.style.display = 'block';
 
-      const offerCandidatesRef = ref(callRef, 'offerCandidates');
-      const answerCandidatesRef = ref(callRef, 'answerCandidates');
+      // WebRTC: respuesta (answer) a la oferta del admin
+      const offerRef = ref(db, `calls/${activeRoomKey}/offer`);
+      const answerRef = ref(db, `calls/${activeRoomKey}/answer`);
+      const offerCandidatesRef = ref(db, `calls/${activeRoomKey}/offerCandidates`);
+      const answerCandidatesRef = ref(db, `calls/${activeRoomKey}/answerCandidates`);
 
-      pc.onicecandidate = e=>{ if(e.candidate) push(answerCandidatesRef, e.candidate.toJSON()); };
-      onChildAdded(offerCandidatesRef, snap=> pc.addIceCandidate(snap.val()));
+      let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
 
-      // Esperar oferta
-      onValue(callRef, async snap=>{
-        const data = snap.val();
-        if(data && data.offer && !pc.currentRemoteDescription){
-          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+      pc.onicecandidate = e => {
+        if (e.candidate) push(answerCandidatesRef, e.candidate.toJSON());
+      };
+
+      onChildAdded(offerCandidatesRef, snap => pc.addIceCandidate(snap.val()));
+
+      onValue(ref(db, `calls/${activeRoomKey}/offer`), async snap => {
+        const offer = snap.val();
+        if (offer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          push(callRef, { answer:answer.toJSON() });
+          push(answerRef, answer.toJSON());
         }
       });
 
-      pc.ontrack = e=>{
-        document.getElementById('userRemoteAudio').srcObject = e.streams[0];
-        document.getElementById('userRemoteAudio').style.display='block';
+      onChildAdded(answerCandidatesRef, snap => pc.addIceCandidate(snap.val()));
+
+      pc.ontrack = e => {
+        userRemoteAudio.srcObject = e.streams[0];
       };
 
-      document.getElementById('userHangUpBtn').onclick=()=>{ pc.close(); show('home'); };
+      userHangUpBtn.onclick = () => { pc.close(); cleanup(); show('home'); };
     }
 
-    // Init
+    function cleanup() {
+      listeners.forEach(off);
+      listeners = [];
+    }
+
+    // Iniciar
     show('home');
   </script>
-
