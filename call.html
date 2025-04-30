@@ -31,7 +31,7 @@
     button { background: var(--ios-primary); color:#fff; border:none; font-weight:500; cursor:pointer; }
     button:active { transform:scale(.98); }
     #status { margin-top:1rem; font-weight:500; color:#3a3a3c; }
-    #remoteAudio { margin-top:1rem; width:100%; display:none; }
+    #remoteAudio { margin-top:1rem; width:100%; display:none; border-radius:10px; }
     #messages { flex:1; overflow-y:auto; border:1px solid rgba(0,0,0,0.1); border-radius:10px; padding:1rem; background:#fff; max-height:200px; text-align:left; display:flex; flex-direction:column; gap:.5rem; }
     .message { padding:.5rem; border-radius:10px; }
     .sent { align-self:flex-end; background: rgba(29,204,68,0.1); }
@@ -68,7 +68,7 @@
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
     import { getDatabase, ref, push, serverTimestamp, onValue, set, remove, off } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js';
 
-    const firebaseConfig = {
+    const config = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
       authDomain: "the-pic-c437e.firebaseapp.com",
       databaseURL: "https://the-pic-c437e-default-rtdb.firebaseio.com",
@@ -77,7 +77,7 @@
       messagingSenderId: "750954597180",
       appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
     };
-    const app = initializeApp(firebaseConfig);
+    const app = initializeApp(config);
     const db = getDatabase(app);
 
     const sections = {
@@ -92,24 +92,31 @@
     const btnCancel = document.getElementById('cancelBtn');
     const typeSel = document.getElementById('requestType');
     const nameInput = document.getElementById('userName');
+    const msgsEl = document.getElementById('messages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendChatBtn');
+    const callStatusEl = document.getElementById('callStatus');
+    const hangUpBtn = document.getElementById('hangUpBtn');
+    const remoteAudio = document.getElementById('remoteAudio');
 
     let roomKey = null, reqType = null, statusListener = null;
+    let pc = null, localStream = null;
 
     function show(section) {
-      Object.values(sections).forEach(sec => sec.classList.add('hidden'));
+      Object.values(sections).forEach(s => s.classList.add('hidden'));
       sections[section].classList.remove('hidden');
     }
     show('request');
 
     btnRequest.onclick = () => {
       reqType = typeSel.value;
-      const user = nameInput.value.trim() || 'Anónimo';
+      const user = nameInput.value.trim() || 'Usuario';
       const newRef = push(ref(db, 'requests'));
       roomKey = newRef.key;
       set(newRef, { type: reqType, user, status: 'pending', timestamp: serverTimestamp() })
         .then(() => {
           show('waiting');
-          waitingMsg.textContent = `Esperando a que un asistente acepte tu solicitud (${reqType === 'chat' ? 'Chat' : 'Llamada'})...`;
+          waitingMsg.textContent = `Esperando a que un asistente acepte tu solicitud (${reqType})...`;
           statusEl.textContent = '';
           if (statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
           statusListener = onValue(ref(db, `requests/${roomKey}/status`), snap => {
@@ -119,43 +126,35 @@
               statusListener = null;
               if (reqType === 'chat') initChat(); else initCall();
             } else if (st === 'cancelled' || st === null) {
-              alert('Tu solicitud fue cancelada o cerrada.');
-              location.reload();
+              alert('Solicitud cancelada.');
+              cleanup();
             }
           });
         })
-        .catch(err => {
-          statusEl.textContent = `Error: ${err.message}`;
-          show('request');
-        });
+        .catch(err => { statusEl.textContent = `Error: ${err.message}`; show('request'); });
     };
 
     btnCancel.onclick = () => {
       if (!roomKey) return;
       set(ref(db, `requests/${roomKey}/status`), 'cancelled')
-        .finally(() => remove(ref(db, `requests/${roomKey}`)).then(() => location.reload()));
+        .finally(() => remove(ref(db, `requests/${roomKey}`)).then(cleanup));
     };
 
     function initChat() {
       show('chat');
-      const msgsEl = document.getElementById('messages');
-      const chatInput = document.getElementById('chatInput');
-      const sendBtn = document.getElementById('sendChatBtn');
-      const userName = nameInput.value.trim() || 'Usuario';
-
       sendBtn.onclick = () => {
         const text = chatInput.value.trim(); if (!text) return;
-        push(ref(db, `chats/${roomKey}`), { sender: 'user', user: userName, text, timestamp: serverTimestamp() });
+        const user = nameInput.value.trim() || 'Usuario';
+        push(ref(db, `chats/${roomKey}`), { sender: 'user', user, text, timestamp: serverTimestamp() });
         chatInput.value = '';
       };
-      chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') { e.preventDefault(); sendBtn.click(); } });
-
+      chatInput.addEventListener('keypress', e => { if (e.key==='Enter') { e.preventDefault(); sendBtn.click(); }});
       onValue(ref(db, `chats/${roomKey}`), snap => {
         msgsEl.innerHTML = '';
         if (!snap.exists()) return;
-        Object.values(snap.val()).sort((a,b) => a.timestamp - b.timestamp).forEach(m => {
+        Object.values(snap.val()).sort((a,b)=>a.timestamp-b.timestamp).forEach(m => {
           const d = document.createElement('div');
-          d.className = 'message ' + (m.sender === 'user' ? 'sent' : 'received');
+          d.className = 'message ' + (m.sender==='user'?'sent':'received');
           d.innerHTML = `<span>${m.user}</span><span>${m.text}</span>`;
           msgsEl.append(d);
         });
@@ -165,26 +164,46 @@
 
     async function initCall() {
       show('call');
-      const callStatusEl = document.getElementById('callStatus');
-      const hangUpBtn = document.getElementById('hangUpBtn');
-      const remoteAudio = document.getElementById('remoteAudio');
-      let pc;
+      callStatusEl.textContent = 'Solicitando micrófono...';
       try {
-        callStatusEl.textContent = 'Solicitando micrófono...';
-        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const dbRef = ref(db, `calls/${roomKey}`);
-        pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-        pc.ontrack = e => { remoteAudio.srcObject = e.streams[0]; remoteAudio.style.display = 'block'; };
-        pc.onicecandidate = e => { if (e.candidate) push(ref(dbRef, 'calleeCandidates'), JSON.stringify(e.candidate)); };
-        const offerSnap = await onValue(ref(db, `calls/${roomKey}/offer`), {});
-        // Resto de intercambio de oferta/respuesta y candidatos...
-        hangUpBtn.disabled = false;
+        localStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        callStatusEl.textContent = 'Conectando...';
       } catch (e) {
-        alert('Error en llamada: ' + e.message);
-        location.reload();
+        alert('Permiso denegado: '+e.message);
+        return cleanup();
       }
-      hangUpBtn.onclick = () => { pc?.close(); location.reload(); };
+      pc = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'}] });
+      localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
+      pc.ontrack = e => { remoteAudio.srcObject = e.streams[0]; remoteAudio.style.display='block'; };
+      pc.onicecandidate = e => { if(e.candidate) push(ref(db, `calls/${roomKey}/calleeCandidates`), JSON.stringify(e.candidate)); };
+      onValue(ref(db, `calls/${roomKey}/offer`), async snap => {
+        if (!snap.exists()) return;
+        const offer = JSON.parse(snap.val());
+        await pc.setRemoteDescription(offer);
+        const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
+        set(ref(db, `calls/${roomKey}/answer`), JSON.stringify(answer));
+      });
+      onValue(ref(db, `calls/${roomKey}/callerCandidates`), snap => {
+        if (!snap.exists()) return;
+        Object.values(snap.val()).forEach(c=> pc.addIceCandidate(new RTCIceCandidate(JSON.parse(c))));
+      });
+      pc.onconnectionstatechange = () => {
+        callStatusEl.textContent = pc.connectionState;
+        if (pc.connectionState==='connected') hangUpBtn.disabled=false;
+        if (['failed','disconnected','closed'].includes(pc.connectionState)) cleanup();
+      };
+      hangUpBtn.onclick = cleanup;
+    }
+
+    function cleanup() {
+      off(ref(db, `requests/${roomKey}/status`));
+      off(ref(db, `chats/${roomKey}`));
+      off(ref(db, `calls/${roomKey}/offer`));
+      off(ref(db, `calls/${roomKey}/callerCandidates`));
+      if(pc) { pc.close(); pc=null; }
+      if(localStream) { localStream.getTracks().forEach(t=>t.stop()); localStream=null; }
+      if(remoteAudio) { remoteAudio.srcObject=null; remoteAudio.style.display='none'; }
+      setTimeout(()=> show('request'), 500);
     }
   </script></body>
 </html>
