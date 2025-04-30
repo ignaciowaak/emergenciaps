@@ -1,71 +1,101 @@
 <!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Admin</title></head>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Crear Sala de Llamada</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: sans-serif; margin: 1rem; }
+    h2 { color: #007AFF; }
+    input, button { padding: .5rem; margin: .5rem 0; }
+    input { width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 5px; }
+    button { background: #007AFF; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
+    #codeDisplay { font-weight: bold; margin-top: 1rem; }
+  </style>
+</head>
 <body>
-  <h2>Administrador</h2>
-  <ul id="calls"></ul>
-  <audio id="remoteAudio" autoplay></audio>
+  <h2>Administrador: Crear Sala</h2>
+  <input type="text" id="roomInput" placeholder="Ingresa un código único">
+  <button id="createBtn">Crear Sala</button>
+  <p id="codeDisplay" hidden>Sala creada: <span id="roomCode"></span></p>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, onChildAdded, get, set, push, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { getDatabase, ref, set, push, onValue, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-    const firebaseConfig = { /* tu config igual */ };
+    // --- Configuración Firebase ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
+      authDomain: "the-pic-c437e.firebaseapp.com",
+      databaseURL: "https://the-pic-c437e-default-rtdb.firebaseio.com",
+      projectId: "the-pic-c437e",
+      storageBucket: "the-pic-c437e.appspot.com",
+      messagingSenderId: "750954597180",
+      appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
+    };
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-    let inCall = false, pc, remoteStream;
+    // STUN/TURN (reemplaza TURN con tu servidor si lo tienes)
+    const iceConfig = {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }
+      ]
+    };
 
-    onChildAdded(ref(db, "calls"), snap => {
-      const id = snap.key, data = snap.val();
-      if (data.status === "waiting" && !inCall) {
-        const li = document.createElement("li");
-        li.textContent = `Llamada: ${id} `;
-        const btn = document.createElement("button");
-        btn.textContent = "Aceptar";
-        btn.onclick = () => join(id);
-        li.append(btn);
-        document.getElementById("calls").append(li);
-      }
-    });
+    let pc, localStream, roomCode = "";
+    const roomInput   = document.getElementById("roomInput");
+    const createBtn   = document.getElementById("createBtn");
+    const codeDisplay = document.getElementById("codeDisplay");
+    const roomCodeSpan= document.getElementById("roomCode");
 
-    async function join(callId) {
-      inCall = true;
-      // 1) Prepará conexión y streams
-      pc = new RTCPeerConnection(servers);
-      remoteStream = new MediaStream();
-      document.getElementById("remoteAudio").srcObject = remoteStream;
-
-      // 2) Mic local
-      const local = await navigator.mediaDevices.getUserMedia({ audio: true });
-      local.getTracks().forEach(t => pc.addTrack(t, local));
-
-      // 3) ICE candidates
-      pc.onicecandidate = e => {
-        if (e.candidate) push(ref(db, `calls/${callId}/adminCandidates`), e.candidate.toJSON());
-      };
-      pc.ontrack = e => { remoteStream.addTrack(e.track); };
-
-      // 4) Leé la oferta del usuario
-      const callRef = ref(db, `calls/${callId}`);
-      const snap = await get(callRef);
-      const offer = snap.val().offer;
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-      // 5) Creá y enviá respuesta SDP
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await set(ref(db, `calls/${callId}/answer`), answer);
-
-      // 6) ICE candidates del caller
-      onValue(ref(db, `calls/${callId}/callerCandidates`), s => {
-        s.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c.val())));
-      });
-
-      // 7) Marcar en curso
-      set(callRef, { status: "in-progress", offer, answer });
+    async function initLocal() {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     }
+
+    function createPC() {
+      pc = new RTCPeerConnection(iceConfig);
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      pc.onicecandidate = e => {
+        if (e.candidate)
+          push(ref(db, `calls/${roomCode}/callerCandidates`),
+               JSON.stringify(e.candidate));
+      };
+      pc.ontrack = e => {
+        const audio = new Audio();
+        audio.srcObject = e.streams[0];
+        audio.play();
+      };
+    }
+
+    createBtn.onclick = async () => {
+      try {
+        await initLocal();
+        roomCode = roomInput.value.trim();
+        if (!roomCode) return alert("Ingresa un código único.");
+        createBtn.disabled = true;
+        createPC();
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await set(ref(db, `calls/${roomCode}/offer`), JSON.stringify(offer));
+
+        roomCodeSpan.textContent = roomCode;
+        codeDisplay.hidden = false;
+
+        onValue(ref(db, `calls/${roomCode}/answer`), async snap => {
+          if (!snap.exists()) return;
+          await pc.setRemoteDescription(JSON.parse(snap.val()));
+        });
+
+        onChildAdded(ref(db, `calls/${roomCode}/calleeCandidates`), async snap => {
+          await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(snap.val())));
+        });
+      } catch (err) {
+        console.error(err);
+        alert("Error creando sala.");
+      }
+    };
   </script>
 </body>
 </html>
