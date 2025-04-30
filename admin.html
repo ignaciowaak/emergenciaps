@@ -2,13 +2,13 @@
 <html>
 <head><title>Admin</title></head>
 <body>
-  <h2>Admin - Solicitudes</h2>
-  <ul id="callList"></ul>
+  <h2>Administrador</h2>
+  <ul id="calls"></ul>
   <audio id="remoteAudio" autoplay></audio>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, onChildAdded, onValue, set, push } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { getDatabase, ref, onChildAdded, set, push, get, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
@@ -22,13 +22,11 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-
-    const callList = document.getElementById("callList");
     const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
     let inCall = false;
 
-    onChildAdded(ref(db, "calls"), snapshot => {
+    onChildAdded(ref(db, "calls"), async snapshot => {
       const callId = snapshot.key;
       const data = snapshot.val();
 
@@ -39,45 +37,39 @@
         btn.innerText = "Aceptar";
         btn.onclick = () => joinCall(callId);
         li.appendChild(btn);
-        callList.appendChild(li);
+        document.getElementById("calls").appendChild(li);
       }
     });
 
     async function joinCall(callId) {
       inCall = true;
+      const pc = new RTCPeerConnection(servers);
+      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-      const callRef = ref(db, `calls/${callId}`);
-      const peerConnection = new RTCPeerConnection(servers);
-
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-      peerConnection.onicecandidate = e => {
+      pc.onicecandidate = (e) => {
         if (e.candidate) {
-          push(ref(db, `calls/${callId}/answerCandidates`), e.candidate.toJSON());
+          push(ref(db, `calls/${callId}/adminCandidates`), e.candidate.toJSON());
         }
       };
 
-      peerConnection.ontrack = (event) => {
+      pc.ontrack = (event) => {
         const remoteAudio = document.getElementById("remoteAudio");
         remoteAudio.srcObject = event.streams[0];
-        remoteAudio.play();
       };
 
-      onValue(ref(db, `calls/${callId}/offer`), async snapshot => {
-        const offer = snapshot.val();
-        if (offer) {
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-          await set(ref(db, `calls/${callId}/answer`), answer);
-        }
-      });
+      const callRef = ref(db, `calls/${callId}`);
+      const callData = await get(callRef);
+      const offer = callData.val().offer;
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await set(ref(db, `calls/${callId}/answer`), answer);
 
-      onValue(ref(db, `calls/${callId}/offerCandidates`), snapshot => {
+      onValue(ref(db, `calls/${callId}/callerCandidates`), snapshot => {
         snapshot.forEach(child => {
-          const candidate = new RTCIceCandidate(child.val());
-          peerConnection.addIceCandidate(candidate);
+          const data = child.val();
+          pc.addIceCandidate(new RTCIceCandidate(data));
         });
       });
 

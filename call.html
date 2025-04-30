@@ -3,14 +3,14 @@
 <html>
 <head><title>Usuario</title></head>
 <body>
-  <h2>Usuario - Iniciar Llamada</h2>
-  <button id="startCall">Iniciar Llamada</button>
-  <p id="status">Esperando admin...</p>
+  <h2>Usuario</h2>
+  <button id="startCall">Iniciar llamada</button>
+  <p id="status">Esperando...</p>
   <audio id="remoteAudio" autoplay></audio>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, push, onValue, set, onDisconnect } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { getDatabase, ref, push, set, onValue, onDisconnect, child } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
@@ -25,55 +25,53 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const startBtn = document.getElementById("startCall");
-    const status = document.getElementById("status");
-
-    let localStream;
-    let peerConnection;
     const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    let pc = new RTCPeerConnection(servers);
+    let localStream;
 
-    startBtn.onclick = async () => {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    document.getElementById("startCall").onclick = async () => {
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
       const callRef = push(ref(db, "calls"));
       const callId = callRef.key;
-      await set(callRef, { status: "waiting" });
+      document.getElementById("status").innerText = "Esperando admin...";
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          push(ref(db, `calls/${callId}/callerCandidates`), e.candidate.toJSON());
+        }
+      };
+
+      pc.ontrack = (event) => {
+        const remoteAudio = document.getElementById("remoteAudio");
+        remoteAudio.srcObject = event.streams[0];
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      await set(callRef, {
+        status: "waiting",
+        offer: offer
+      });
 
       onDisconnect(callRef).remove();
 
-      peerConnection = new RTCPeerConnection(servers);
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-      peerConnection.onicecandidate = e => {
-        if (e.candidate) {
-          push(ref(db, `calls/${callId}/offerCandidates`), e.candidate.toJSON());
-        }
-      };
-
-      peerConnection.ontrack = (event) => {
-        const remoteAudio = document.getElementById("remoteAudio");
-        remoteAudio.srcObject = event.streams[0];
-        remoteAudio.play();
-      };
-
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      await set(ref(db, `calls/${callId}/offer`), offer);
-
-      status.innerText = "Esperando que un admin acepte...";
-
       onValue(ref(db, `calls/${callId}/answer`), async snapshot => {
-        const answer = snapshot.val();
-        if (answer && !peerConnection.currentRemoteDescription) {
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-          status.innerText = "Conectado con admin!";
+        if (snapshot.exists()) {
+          const answer = snapshot.val();
+          if (!pc.currentRemoteDescription) {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            document.getElementById("status").innerText = "Conectado!";
+          }
         }
       });
 
-      onValue(ref(db, `calls/${callId}/answerCandidates`), snapshot => {
+      onValue(ref(db, `calls/${callId}/adminCandidates`), snapshot => {
         snapshot.forEach(child => {
-          const candidate = new RTCIceCandidate(child.val());
-          peerConnection.addIceCandidate(candidate);
+          const data = child.val();
+          pc.addIceCandidate(new RTCIceCandidate(data));
         });
       });
     };
