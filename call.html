@@ -2,164 +2,101 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Ayuda en Tiempo Real</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usuario - Emergencia</title>
   <style>
-    .hidden { display: none !important; }
     :root {
-      --ios-primary: #007AFF; /* Azul para elementos generales */
-      --admin-primary: #1DCC44; /* Verde (Admin) */
+      --ios-primary: #007AFF; /* Azul */
+      --user-primary: #FF9500; /* Naranja */
       --ios-background: rgba(242,242,247,0.9);
       --ios-blur: blur(20px);
       --ios-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      /* Colores de chat más neutrales para el usuario final */
-      --user-chat-bubble-bg: rgba(0,122,255,0.1); /* Azul claro */
-      --admin-chat-bubble-bg: rgba(29,204,68,0.1); /* Verde claro */
-      --user-chat-name-color: var(--ios-primary);
-      --admin-chat-name-color: var(--admin-primary);
+      --admin-color: #1DCC44; /* Verde */
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f5f5f9; margin:0; min-height:100vh;
-      display:flex; justify-content:center; align-items:center;
-      flex-wrap: wrap; gap:20px;
-      padding: 20px; /* Añadido padding */
-      box-sizing: border-box;
+      background: #f5f5f9; margin:0; min-height:100vh; display:flex; flex-direction:column;
     }
-    .card {
-      background: var(--ios-background); backdrop-filter: var(--ios-blur);
-      box-shadow: var(--ios-shadow); border-radius:14px;
-      padding:2rem; width:90%; max-width:400px;
-      text-align:center; transition: opacity .3s, transform .3s;
-      opacity:1; transform:scale(1);
-      box-sizing: border-box; /* Asegurar padding no desborde */
-    }
-    .card.hidden { opacity:0; transform:scale(.95); }
+    .view { display: none; width:100%; }
+    .view:not(.hidden) { flex:1; display:flex; justify-content:center; align-items:center; padding:20px; box-sizing:border-box; }
+    .hidden { display:none !important; }
+    .card { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:2rem; width:90%; max-width:400px; text-align:center; transition: opacity .3s, transform .3s; }
+    .card.hidden { opacity: 0; transform: scale(.95); }
     h2 { margin-top:0; color:#1c1c1e; }
-    select, input, button { width:100%; margin:.5rem 0; padding:.75rem; border-radius:10px; border:1px solid rgba(0,0,0,0.1); font-size:1rem; box-sizing:border-box; }
-    button { background: var(--ios-primary); color:#fff; border:none; font-weight:500; cursor:pointer; }
-    button:active { transform:scale(.98); }
-    button:disabled { opacity: 0.5; cursor: default; } /* Estilo para botón deshabilitado */
-
-    #status { margin-top:1rem; font-weight:500; color:#3a3a3c; min-height: 1.2em;} /* Altura mínima para evitar saltos */
-    #remoteAudio { margin-top:1rem; width:100%; display:none; border-radius:10px; background: #000;} /* Fondo oscuro para audio */
-
-    /* Estilos específicos del Chat */
-    #chatSection .card { /* Estilos para la tarjeta de chat si necesitas overrides */
-        max-width: 600px; /* Puede ser más ancha para el chat */
-        height: 90vh; /* Altura para el chat */
-        display: flex; /* La tarjeta de chat es un flex container */
-        flex-direction: column;
-        padding: 1.5rem; /* Padding ajustado para el chat */
-    }
-    #chatSection h2 { margin-bottom: 1rem; }
-    #messages {
-        flex:1; /* Ocupa el espacio restante */
-        overflow-y:auto;
-        border:1px solid rgba(0,0,0,0.1);
-        border-radius:10px;
-        padding:1rem;
-        background:#fff;
-        max-height: none; /* No limitar la altura máxima si el contenedor tiene altura */
-        margin-bottom: 1rem;
-        display:flex; flex-direction:column; gap:.5rem;
-        text-align:left; /* Alinear mensajes a la izquierda por defecto */
-    }
-     /* Contenedor del input y botón de enviar */
-    .input-area { display: flex; gap: 0.5rem; }
-     #chatInput {
-         flex: 1; /* El input ocupa el espacio flexible */
-         margin: 0; /* Eliminar márgenes verticales duplicados por el estilo input general */
-     }
-     #sendChatBtn {
-         width: auto; /* El botón no ocupa el ancho completo */
-         margin: 0; /* Eliminar márgenes verticales duplicados */
-         padding: 10px 20px; /* Padding ajustado para el botón de chat */
-         background: var(--ios-primary); /* Color primario para enviar */
-     }
-     #sendChatBtn:active { transform: scale(0.98); } /* Animación al hacer clic */
-
-
-    .message { padding:.5rem .75rem; border-radius:12px; max-width: 80%; word-wrap: break-word;} /* Ajustes de padding y max-width */
-     .message span { display: block; font-size: 0.9em; } /* Nombre un poco más pequeño */
-     .message span:last-child { font-size: 1em; margin-top: 0.1em; font-weight: normal; } /* Texto del mensaje */
-
-
-    .sent { /* Mensajes enviados por ESTE usuario */
-        align-self:flex-end;
-        background: var(--user-chat-bubble-bg); /* Color de burbuja para el usuario */
-        color: #000; /* Texto negro */
-        text-align: right; /* Alinear texto a la derecha */
-    }
-    .sent span:first-child { color: var(--user-chat-name-color); font-weight:500; } /* Nombre en color primario */
-
-    .received { /* Mensajes recibidos del Admin */
-        align-self:flex-start;
-        background: var(--admin-chat-bubble-bg); /* Color de burbuja para el admin */
-        color: #000; /* Texto negro */
-        text-align: left; /* Alinear texto a la izquierda */
-    }
-    .received span:first-child { color: var(--admin-chat-name-color); font-weight:500; } /* Nombre en color admin */
-
-    /* Estilos específicos del input en la sección de chat */
-    #chatSection .card input[type="text"] {
-        margin: 0; /* Eliminar márgenes verticales duplicados */
-    }
-     #chatSection .card button {
-         margin-top: 0; /* Eliminar margen superior duplicado */
-     }
-
-
+    input, select { width:100%; padding:12px; margin:.5rem 0; border-radius:10px; border:1px solid rgba(0,0,0,0.1); background:white; box-sizing:border-box; }
+    button { width:100%; padding:12px; margin-top:1rem; background:var(--user-primary); color:white; border:none; border-radius:10px; font-weight:500; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:default; }
+    /* Chat */
+    .chat-container { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:1.5rem; width:95%; max-width:600px; display:flex; flex-direction:column; height:90vh; }
+    #userMessages { flex:1; overflow-y:auto; border:1px solid rgba(0,0,0,0.1); border-radius:10px; padding:1rem; background:#fff; margin-bottom:1rem; display:flex; flex-direction:column; gap:.5rem; }
+    .message { padding:.5rem .75rem; border-radius:12px; max-width:80%; word-wrap:break-word; }
+    .received { align-self:flex-start; background:#e5e5ea; color:#000; } /* Mensajes del Admin */
+    .received span:first-child { color:var(--admin-color); font-weight:500; font-size:.9em; margin-bottom:.1em; }
+    .sent { align-self:flex-end; background:var(--user-primary); color:#fff; } /* Mensajes del Usuario */
+    .sent span:first-child { color:rgba(255,255,255,.8); font-weight:500; font-size:.9em; margin-bottom:.1em; }
+    .input-area { display:flex; gap:.5rem; }
+    #userChatInput { flex:1; padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.1); }
+    #sendUserChatBtn { flex-shrink:0; }
+    #endUserChatBtn { background:#ff3b30; /* Rojo */ }
+    /* Llamada */
+    .call-container { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:2rem; width:95%; max-width:400px; text-align:center; display:flex; flex-direction:column; gap:1rem; }
+    #userHangUpBtn { background:#ff3b30; /* Rojo */ }
+    #userRemoteAudio { display:none; width:100%; border-radius:10px; background:#000; } /* Placeholder for audio */
+    #userLocalVideo, #userRemoteVideo { width: 100%; max-height: 250px; background: #000; border-radius: 10px; display: none; } /* Placeholders for video */
   </style>
 </head>
 <body>
-  <!-- Selección de solicitud -->
-  <div class="card" id="requestSection">
-    <h2>¿Necesitas Ayuda?</h2>
-    <select id="requestType">
-      <option value="chat">Chat de Emergencia</option>
-      <option value="call">Llamada de Emergencia</option>
-    </select>
-    <input type="text" id="userName" placeholder="Tu nombre (opcional)">
-    <button id="btnRequest">Enviar Solicitud</button>
-    <p id="status">Estado: Listo para enviar</p>
-  </div>
-
-  <!-- Espera de aceptación por admin -->
-  <div class="card hidden" id="waitingSection" style="display: none;">
-    <h2>Solicitud Enviada</h2>
-    <p id="waitingMsg">Espera a que un asistente acepte tu solicitud...</p>
-    <button id="cancelBtn">Cancelar Solicitud</button>
-  </div>
-
-  <!-- Chat -->
-  <div class="card hidden" id="chatSection" style="display: none;">
-    <h2>Chat de Emergencia</h2>
-    <div id="messages"></div>
-    <div class="input-area"> <!-- Contenedor para input y botón -->
-        <input type="text" id="chatInput" placeholder="Escribe tu mensaje">
-        <button id="sendChatBtn">Enviar</button>
+  <div id="homeView" class="view">
+    <div class="card">
+      <h2>Solicitud de Emergencia</h2>
+      <input type="text" id="userName" placeholder="Tu Nombre" />
+      <input type="text" id="message" placeholder="Describe tu emergencia" />
+      <select id="requestType">
+        <option value="chat">Chat</option>
+        <option value="call">Llamada</option>
+      </select>
+      <button id="makeRequestBtn">Enviar Solicitud</button>
     </div>
-    <!-- Puedes añadir un botón para "Finalizar Chat" si el usuario puede cerrar -->
-    <!-- <button id="endChatBtn">Finalizar Chat</button> -->
   </div>
 
-  <!-- Llamada -->
-  <div class="card hidden" id="callSection" style="display: none;">
-    <h2>Llamada de Emergencia</h2>
-    <p id="callStatus">Conectando...</p>
-    <button id="hangUpBtn" disabled>Colgar</button>
-    <audio id="remoteAudio" controls autoplay></audio>
+  <div id="waitingView" class="view hidden">
+    <div class="card">
+      <h2>Esperando Respuesta...</h2>
+      <p id="waitingMessage">Tu solicitud ha sido enviada. Esperando que un administrador la atienda.</p>
+      </div>
+  </div>
+
+  <div id="chatUserView" class="view hidden">
+    <div class="chat-container">
+      <h2>Chat de Emergencia - Sala <span id="roomKeyDisplayUserChat"></span></h2>
+      <div id="userMessages"></div>
+      <div class="input-area">
+        <input type="text" id="userChatInput" placeholder="Escribe tu mensaje" />
+        <button id="sendUserChatBtn">Enviar</button>
+      </div>
+      <button id="endUserChatBtn">Finalizar Chat</button>
+    </div>
+  </div>
+
+  <div id="callUserView" class="view hidden">
+     <div class="call-container">
+      <h2>Llamada de Emergencia - Sala <span id="roomKeyDisplayUserCall"></span></h2>
+      <p id="userCallStatus">Iniciando llamada...</p>
+      <video id="userLocalVideo" autoplay muted></video>
+      <video id="userRemoteVideo" autoplay></video>
+      <audio id="userRemoteAudio" controls autoplay></audio>
+      <button id="userHangUpBtn">Colgar Llamada</button>
+    </div>
   </div>
 
   <script type="module">
-    // Versión consistente con el admin panel
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
-    import { getDatabase, ref, push, serverTimestamp, onValue, set, remove, off } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js';
+    // Importar módulos de Firebase
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getDatabase, ref, push, serverTimestamp, onChildAdded, off, remove, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-    // Nombre de la variable consistente
+    // Tu configuración de Firebase (debe ser la misma que la del admin)
     const firebaseConfig = {
-      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulrINB7cI", // Reemplaza con tu API Key real
+      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
       authDomain: "the-pic-c437e.firebaseapp.com",
       databaseURL: "https://the-pic-c437e-default-rtdb.firebaseio.com",
       projectId: "the-pic-c437e",
@@ -167,572 +104,294 @@
       messagingSenderId: "750954597180",
       appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
     };
+
+    // Inicializar Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Elementos organizados por sección
-    const sections = {
-      request: document.getElementById('requestSection'),
-      waiting: document.getElementById('waitingSection'),
-      chat: document.getElementById('chatSection'),
-      call: document.getElementById('callSection')
-    };
+    // Referencias a las vistas
+    const homeView = document.getElementById('homeView');
+    const waitingView = document.getElementById('waitingView');
+    const chatUserView = document.getElementById('chatUserView');
+    const callUserView = document.getElementById('callUserView');
 
-    // Elementos comunes o de la sección request
-    const statusEl = document.getElementById('status');
-    const waitingMsg = document.getElementById('waitingMsg');
-    const btnRequest = document.getElementById('btnRequest');
-    const btnCancel = document.getElementById('cancelBtn');
-    const typeSel = document.getElementById('requestType');
-    const nameInput = document.getElementById('userName');
+    // Referencias a elementos de control
+    const userNameInput = document.getElementById('userName');
+    const messageInput = document.getElementById('message');
+    const requestTypeSelect = document.getElementById('requestType');
+    const makeRequestBtn = document.getElementById('makeRequestBtn');
+    // const cancelRequestBtn = document.getElementById('cancelRequestBtn'); // Opcional
 
-    // Elementos específicos de la sección chat
-    const msgsEl = document.getElementById('messages');
-    const chatInput = document.getElementById('chatInput');
-    const sendBtn = document.getElementById('sendChatBtn');
-    // const endChatBtn = document.getElementById('endChatBtn'); // Botón de finalizar chat para el usuario (opcional)
+    const roomKeyDisplayUserChat = document.getElementById('roomKeyDisplayUserChat');
+    const userMessagesEl = document.getElementById('userMessages');
+    const userChatInput = document.getElementById('userChatInput');
+    const sendUserChatBtn = document.getElementById('sendUserChatBtn');
+    const endUserChatBtn = document.getElementById('endUserChatBtn');
 
-    // Elementos específicos de la sección call
-    const callStatusEl = document.getElementById('callStatus');
-    const hangUpBtn = document.getElementById('hangUpBtn');
-    const remoteAudio = document.getElementById('remoteAudio');
+    const roomKeyDisplayUserCall = document.getElementById('roomKeyDisplayUserCall');
+    const userCallStatusEl = document.getElementById('userCallStatus');
+    const userHangUpBtn = document.getElementById('userHangUpBtn');
+    const userRemoteAudio = document.getElementById('userRemoteAudio');
+    // const userLocalVideo = document.getElementById('userLocalVideo'); // WebRTC
+    // const userRemoteVideo = document.getElementById('userRemoteVideo'); // WebRTC
 
     // Variables de estado
-    let roomKey = null;
-    let reqType = null;
-    let statusListener = null; // Listener para el estado de la solicitud principal
+    let activeRoomKey = null;
+    let activeRequestType = null;
+    let userName = '';
+    let sessionEndListener = null; // Listener para detectar cuándo el admin finaliza
 
-    // Variables de WebRTC
-    let pc = null;
-    let localStream = null;
-    let offerListener = null; // Listener para la oferta en la llamada (el usuario espera la oferta del admin)
-    let answerListener = null; // Listener para la respuesta en la llamada (el usuario envía la respuesta)
-    let callerCandidatesListener = null; // Listener para los candidatos ICE del admin
-
-
-    // --- Funciones de Control de Vistas y Sesiones ---
-
-    // Muestra una sección y oculta las otras
-    function show(section) {
-      console.log(`Mostrando sección: ${section}`);
-      Object.values(sections).forEach(s => {
-          if (s) s.classList.add('hidden');
-      });
-      if (sections[section]) {
-          sections[section].classList.remove('hidden');
-           // Asegurarse de que el scroll esté al principio al cambiar de vista principal
-           // window.scrollTo(0, 0);
-      } else {
-          console.error(`Error: Sección "${section}" no encontrada.`);
-      }
+    // Función para mostrar una vista
+    function showView(id) {
+      [homeView, waitingView, chatUserView, callUserView].forEach(v => v.classList.add('hidden'));
+      document.getElementById(id).classList.remove('hidden');
     }
 
-    // Establecer el estado inicial: mostrar solo la sección de solicitud
-    show('request');
+    // Mostrar la vista inicial al cargar
+    showView('homeView');
 
+    // --- Lógica para hacer la solicitud ---
+    makeRequestBtn.onclick = async () => {
+      userName = userNameInput.value.trim();
+      const messageText = messageInput.value.trim();
+      const requestType = requestTypeSelect.value;
 
-    // Función principal para limpiar recursos y volver al estado inicial
-    function cleanup() {
-      console.log("Limpiando recursos y volviendo al estado inicial...");
-
-      // Detener listeners de Firebase activos
-      if (roomKey) {
-          if (statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
-          statusListener = null; // Limpiar referencia
-
-          // Detener listeners específicos de chat si estaban activos
-          if (chatMessagesListener) off(ref(db, `chats/${roomKey}`), chatMessagesListener);
-          chatMessagesListener = null;
-
-          // Detener listeners específicos de llamada si estaban activos
-          if (offerListener) off(ref(db, `calls/${roomKey}/offer`), offerListener);
-          offerListener = null;
-          if (callerCandidatesListener) off(ref(db, `calls/${roomKey}/callerCandidates`), callerCandidatesListener);
-          callerCandidatesListener = null;
-          // No detenemos el listener de answer aquí, ya que el usuario es quien la envía y no necesita escucharse a sí mismo.
+      if (!userName || !messageText) {
+        alert('Por favor, ingresa tu nombre y describe la emergencia.');
+        return;
       }
 
-
-      // Limpiar recursos de WebRTC
-      if (pc && pc.connectionState !== 'closed') {
-          console.log("Cerrando RTCPeerConnection.");
-          pc.close();
-          pc = null;
-      }
-      if (localStream) {
-          console.log("Deteniendo pistas de medios locales.");
-          localStream.getTracks().forEach(t => t.stop());
-          localStream = null;
-      }
-      if (remoteAudio) {
-          console.log("Limpiando elemento de audio remoto.");
-          remoteAudio.srcObject = null;
-          remoteAudio.style.display = 'none';
-      }
-      // if (localVideo) { localVideo.srcObject = null; }
-
-
-      // Resetear variables de estado de la solicitud
-      roomKey = null;
-      reqType = null;
-
-
-      // Opcional: Limpiar datos de Firebase si la sesión terminó de forma inesperada por el usuario
-      // Si el admin es quien finaliza (colgar/cerrar chat), él debería limpiar la base de datos.
-      // El usuario solo intenta limpiar al cancelar o cerrar la ventana.
-       // if (roomKey durante el cleanup) {
-           // remove(ref(db, `requests/${roomKey}`)); // Podría ya estar eliminada por el admin/cancelación
-           // remove(ref(db, `chats/${roomKey}`)); // Podría ya estar eliminada
-           // remove(ref(db, `calls/${roomKey}`)); // Podría ya estar eliminada
-       // }
-
-
-      // Volver a mostrar la sección de solicitud después de un breve retraso
-      setTimeout(() => {
-          show('request');
-          statusEl.textContent = 'Estado: Listo para enviar'; // Resetear texto de estado
-          nameInput.value = ''; // Limpiar campo de nombre
-          typeSel.value = 'chat'; // Resetear tipo de solicitud
-      }, 500);
-    }
-
-
-    // --- Lógica de Solicitud ---
-
-    btnRequest.onclick = () => {
-      reqType = typeSel.value;
-      const user = nameInput.value.trim() || 'Usuario';
-
-       // Validaciones básicas antes de enviar
-       // if (!user) { alert('Por favor, ingresa tu nombre.'); return; } // Nombre es opcional ahora
-
-      console.log(`Enviando solicitud de ${reqType} para usuario ${user}...`);
-
-      const newRef = push(ref(db, 'requests')); // Crea una nueva entrada con ID único
-      roomKey = newRef.key; // Guarda el ID generado para esta solicitud
-
-      // Enviar la solicitud a Firebase
-      set(newRef, { type: reqType, user, status: 'pending', timestamp: serverTimestamp() /*, userAgent: navigator.userAgent */ /* Opcional: añadir más info */ })
-        .then(() => {
-          console.log(`Solicitud ${roomKey} enviada. Tipo: ${reqType}, Usuario: ${user}`);
-          // Mostrar la sección de espera
-          show('waiting');
-          waitingMsg.textContent = `Esperando a que un asistente acepte tu solicitud (${reqType === 'chat' ? 'Chat' : 'Llamada'})...`;
-          statusEl.textContent = ''; // Limpiar estado previo
-
-
-          // Asegurarse de que no haya listener previo activo
-          if (statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
-
-          // Escuchar cambios en el estado de esta solicitud específica
-          statusListener = onValue(ref(db, `requests/${roomKey}/status`), snap => {
-            const st = snap.val();
-            console.log(`Estado de solicitud ${roomKey} cambiado a: ${st}`);
-
-            if (st === 'accepted') {
-              console.log('Solicitud aceptada. Inicializando:', reqType);
-              // Detener el listener de estado una vez aceptada
-              if (statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
-              statusListener = null; // Limpiar referencia
-
-              // Iniciar la lógica de chat o llamada
-              if (reqType === 'chat') {
-                  initChat();
-              } else { // reqType === 'call'
-                  initCall();
-              }
-
-            } else if (st === 'cancelled' || st === null) {
-              // Si el admin cancela o la entrada se elimina
-              console.log('Solicitud cancelada o eliminada por el admin.');
-               alert('Tu solicitud fue cancelada o finalizada.');
-               cleanup(); // Limpiar recursos y volver al inicio
-            }
-            // Si el estado cambia a algo inesperado, también podríamos limpiar/resetear
-            // else { console.warn(`Estado inesperado para solicitud ${roomKey}: ${st}`); }
-          });
-        })
-        .catch(err => {
-            console.error("Error al enviar la solicitud a Firebase:", err);
-            statusEl.textContent = `Error al enviar solicitud: ${err.message}`;
-            alert(`Error al enviar solicitud: ${err.message}`);
-            cleanup(); // Limpiar y volver al inicio en caso de error al enviar
-        });
-    };
-
-    // Lógica para cancelar la solicitud desde la pantalla de espera
-    btnCancel.onclick = () => {
-      if (!roomKey) {
-          console.warn("Intentando cancelar sin roomKey.");
-          cleanup(); // Solo limpiar si no hay roomKey válida
-          return;
-      }
-      console.log(`Usuario cancelando solicitud ${roomKey}.`);
-      // Establecer estado 'cancelled' (el admin podría estar escuchando este estado)
-      set(ref(db, `requests/${roomKey}/status`), 'cancelled')
-        .finally(() => {
-            // Eliminar la solicitud de la base de datos
-            remove(ref(db, `requests/${roomKey}`))
-            .then(() => {
-                console.log(`Solicitud ${roomKey} eliminada por el usuario.`);
-                cleanup(); // Limpiar y volver al inicio
-            })
-            .catch(err => {
-                console.error("Error al eliminar solicitud cancelada:", err);
-                alert("Error al cancelar solicitud.");
-                cleanup(); // Intentar limpiar y volver al inicio a pesar del error de eliminación
-            });
-        });
-    };
-
-
-    // --- Lógica de Chat (Usuario) ---
-
-    function initChat() {
-      console.log(`Inicializando Chat para sala ${roomKey}.`);
-      show('chat'); // Mostrar la sección de chat
-
-      // Elementos específicos de chat (ya definidos globalmente)
-      // msgsEl, chatInput, sendBtn
-
-      // Limpiar mensajes previos si los hubiera (redundante con show('chat') pero seguro)
-       msgsEl.innerHTML = '';
-
-      // Función para enviar mensaje
-      const sendMessage = () => {
-        const text = chatInput.value.trim();
-        if (!text || !roomKey) {
-             console.warn("Intento de enviar mensaje vacío o sin roomKey.");
-             return;
-        }
-
-        const user = nameInput.value.trim() || 'Usuario'; // Usar el nombre ingresado
-        console.log(`Enviando mensaje a sala ${roomKey} como ${user}: ${text}`);
-
-        // Enviar mensaje a Firebase (sender: 'user' para diferenciar)
-        push(ref(db, `chats/${roomKey}`), { sender: 'user', user, text, timestamp: serverTimestamp() })
-        .then(() => {
-             chatInput.value = ''; // Limpiar input después de enviar
-             console.log("Mensaje enviado exitosamente.");
-        })
-        .catch(error => {
-            console.error("Error al enviar mensaje:", error);
-            alert("Error al enviar mensaje.");
-        });
-      };
-
-      // Adjuntar event listeners (usamos onclick y onkeypress directamente para simplicidad, reemplazan listeners previos)
-      sendBtn.onclick = sendMessage;
-
-      chatInput.onkeypress = function(event) {
-          if (event.key === 'Enter') {
-              event.preventDefault(); // Prevenir el salto de línea por defecto
-              sendMessage(); // Llamar a la función de enviar
-          }
-      };
-
-      // Listener para recibir mensajes
-      // Detach previous listener if any (redundante con cleanup, pero seguro)
-       if (chatMessagesListener) {
-            off(ref(db, `chats/${roomKey}`), chatMessagesListener);
-            chatMessagesListener = null;
-       }
-
-      chatMessagesListener = onValue(ref(db, `chats/${roomKey}`), snap => {
-        msgsEl.innerHTML = ''; // Limpiar y re-renderizar (simple para listas cortas)
-        if (!snap.exists()) {
-             console.log(`No hay mensajes en la sala ${roomKey} aún.`);
-             return;
-        }
-        const messages = snap.val();
-        const sortedMessages = Object.values(messages).sort((a,b)=>a.timestamp-b.timestamp);
-
-        sortedMessages.forEach(m => {
-          const d = document.createElement('div');
-          // Usar el campo 'sender' para determinar si el mensaje es del usuario o admin
-          d.className = 'message ' + (m.sender==='user'?'sent':'received');
-          // Mostrar el nombre y el texto
-          d.innerHTML = `<span>${m.user || 'Anónimo'}</span><span>${m.text || ''}</span>`;
-          msgsEl.append(d);
-        });
-        // Auto-scroll al final
-        msgsEl.scrollTop = msgsEl.scrollHeight;
-         console.log(`Mensajes de sala ${roomKey} actualizados.`);
-      });
-
-       // Opcional: Añadir manejo para el evento de finalización del chat por el admin
-       // Podríamos escuchar cambios en la entrada de chat (`/chats/${roomKey}`) o la solicitud (`/requests/${roomKey}`)
-       // Si el admin elimina `/chats/${roomKey}` o marca `/requests/${roomKey}` como 'closed', esta página debería detectarlo y limpiar.
-       // El listener de `requests/${roomKey}/status` ya maneja la eliminación (`st === null`).
-    }
-
-
-    // --- Lógica de Llamada (Usuario - Callee) ---
-
-    async function initCall() {
-      console.log(`Inicializando Llamada (Usuario/Callee) para sala ${roomKey}.`);
-      show('call'); // Mostrar la sección de llamada
-
-      // Elementos específicos de llamada (ya definidos globalmente)
-      // callStatusEl, hangUpBtn, remoteAudio
-
-      callStatusEl.textContent = 'Solicitando acceso al micrófono...';
-      hangUpBtn.disabled = true; // Deshabilitar colgar hasta que la conexión esté lista
-
-
-      // Limpiar recursos WebRTC y listeners de llamadas previas
-       if (pc && pc.connectionState !== 'closed') { pc.close(); }
-       if (localStream) { localStream.getTracks().forEach(t=>t.stop()); }
-       if (remoteAudio) { remoteAudio.srcObject = null; remoteAudio.style.display = 'none'; }
-       // if (localVideo) { localVideo.srcObject = null; }
-
-       // Detener listeners de Firebase de llamadas previas si existen (redundante con cleanup, pero seguro)
-       if (roomKey) {
-           if (offerListener) off(ref(db, `calls/${roomKey}/offer`), offerListener);
-           offerListener = null;
-           if (callerCandidatesListener) off(ref(db, `calls/${roomKey}/callerCandidates`), callerCandidatesListener);
-           callerCandidatesListener = null;
-           // No detenemos el listener de answer aquí, ya que el usuario es quien la crea.
-       }
-
-
+      makeRequestBtn.disabled = true;
       try {
-        // Pedir acceso solo a audio para el usuario que pide ayuda
-        localStream = await navigator.mediaDevices.getUserMedia({ audio:true, video: false });
-        console.log('Acceso al micrófono concedido.');
-        callStatusEl.textContent = 'Esperando oferta del asistente...';
+        // Pushing to 'requests' creates the request entry and gets a unique key
+        const newRequestRef = push(ref(db, 'requests'), {
+          user: userName,
+          message: messageText,
+          type: requestType,
+          timestamp: serverTimestamp()
+        });
+        activeRoomKey = newRequestRef.key; // This is the unique key for the request/room
+        activeRequestType = requestType;
+
+        console.log("Solicitud enviada. Room Key:", activeRoomKey);
+
+        // Clear form fields (optional)
+        // userNameInput.value = '';
+        messageInput.value = '';
+
+        showView('waitingView');
+        monitorRequestStatus(); // Start monitoring for admin's response
+
       } catch (e) {
-        console.error("Error al obtener micrófono:", e);
-        alert('No se pudo acceder al micrófono: '+e.message);
-        return cleanup(); // Limpiar y volver al inicio si falla el acceso al micrófono
+        console.error('Error al enviar solicitud:', e);
+        alert('Hubo un error al enviar tu solicitud. Intenta de nuevo.');
+      } finally {
+        makeRequestBtn.disabled = false;
       }
+    };
 
-      // Configuración RTCPeerConnection
-      pc = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'}] });
-      console.log('RTCPeerConnection creada para usuario (Callee).');
+    // --- Lógica para monitorear el estado de la solicitud ---
+    function monitorRequestStatus() {
+      if (!activeRoomKey) return;
 
-      // Añadir la pista de audio local (micrófono) al peer connection
-      localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
+      console.log("Monitoreando estado para Room Key:", activeRoomKey);
 
-      // Manejar pista(s) remota(s) (audio del admin)
-      pc.ontrack = e => {
-           console.log('Pista remota recibida:', e.track.kind);
-           if (e.track.kind === 'audio') {
-               remoteAudio.srcObject = e.streams[0];
-               remoteAudio.style.display='block'; // Mostrar el elemento audio
-               console.log('Audio remoto del admin adjuntado.');
+      // Listen for the creation of the chat or call node by the admin
+      const chatRoomRef = ref(db, `chats/${activeRoomKey}`);
+      const callRoomRef = ref(db, `calls/${activeRoomKey}`);
+
+      // Listener for chat session starting
+      const chatStartListener = onValue(chatRoomRef, (snapshot) => {
+        if (snapshot.exists()) {
+          console.log("Chat session initiated by admin.");
+          off(callRoomRef, callStartListener); // Stop listening for call
+          initChatUser(activeRoomKey);
+        }
+      }, { onlyOnce: true }); // Listen only for the first data
+
+      // Listener for call session starting
+      const callStartListener = onValue(callRoomRef, (snapshot) => {
+        if (snapshot.exists()) {
+          console.log("Call session initiated by admin.");
+          off(chatRoomRef, chatStartListener); // Stop listening for chat
+          initCallUser(activeRoomKey);
+        }
+      }, { onlyOnce: true }); // Listen only for the first data
+
+      // Also listen for the admin *removing* the original request
+      // (based on admin code removing it right after accepting)
+      // This is less reliable as a session *start* signal, but good for detecting if admin cancels
+      const requestRef = ref(db, `requests/${activeRoomKey}`);
+       onValue(requestRef, (snapshot) => {
+          if (!snapshot.exists() && activeRoomKey && !chatUserView.classList.contains('hidden') && !callUserView.classList.contains('hidden')) {
+               // Request removed AFTER chat/call started - this means admin ended it
+               console.log("Admin ended the session (request removed after session started).");
+               endHandlingUser();
+           } else if (!snapshot.exists() && activeRoomKey && waitingView.classList.contains('hidden')) {
+               // Request removed while still waiting - admin cancelled or ignored
+               console.log("Admin cancelled or ignored the request.");
+               endHandlingUser("Tu solicitud fue cancelada o no pudo ser atendida."); // Provide feedback
            }
-      };
+       }, { onlyOnce: false }); // Keep listening
 
-      // Manejar candidatos ICE locales (los del usuario)
-      pc.onicecandidate = e => {
-           if(e.candidate) {
-               console.log('Candidato ICE local (usuario) generado:', e.candidate);
-               // Enviar candidato al otro par (admin) a través de Firebase
-               push(ref(db, `calls/${roomKey}/calleeCandidates`), JSON.stringify(e.candidate))
-               .catch(error => console.error('Error al enviar candidato ICE (usuario):', error));
-           } else {
-               console.log('Fin de candidatos ICE locales (usuario).');
-           }
-      };
-
-       // Manejar cambios de estado de conexión ICE
-      pc.oniceconnectionstatechange = () => {
-           console.log(`Estado ICE (usuario): ${pc.iceConnectionState}`);
-            callStatusEl.textContent = `Estado ICE: ${pc.iceConnectionState}`;
-            if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-                 console.log('Conexión ICE desconectada o fallida.');
-                 // La función onconnectionstatechange maneja la limpieza completa
+        // Set up listener to detect session end *after* it has started
+        sessionEndListener = onValue(activeRequestType === 'chat' ? chatRoomRef : callRoomRef, (snapshot) => {
+            if (!snapshot.exists() && (chatUserView.classList.contains('hidden') || callUserView.classList.contains('hidden'))) {
+                // The chat/call node was removed while we were in the session view
+                console.log("Session node removed. Admin ended the session.");
+                endHandlingUser("El administrador finalizó la sesión.");
             }
-      };
+        });
 
-      // Manejar cambios de estado de conexión principal
-      pc.onconnectionstatechange = () => {
-        console.log(`Estado de Conexión (usuario): ${pc.connectionState}`);
-        callStatusEl.textContent = `Estado: ${pc.connectionState}`;
-        if (pc.connectionState === 'connected') {
-             console.log('Conexión establecida!');
-             hangUpBtn.disabled=false; // Habilitar colgar
-             callStatusEl.textContent = 'Llamada Conectada';
-        } else if (['failed','disconnected','closed'].includes(pc.connectionState)) {
-            console.log('Conexión terminada o fallida.');
-            // Asegurarse de que esto solo se llama si es la sesión activa actual
-            if (roomKey) { // Usamos la variable global roomKey para verificar si es la sesión activa
-                 console.log(`Llamada para sala ${roomKey} terminada/fallida.`);
-                 cleanup(); // Limpiar recursos y volver al inicio
-            } else {
-                 console.log("Estado de conexión cambió pero no hay roomKey activa.");
-            }
-        }
-      };
+    }
 
-       // Manejar errores en la conexión Peer
-       pc.onerror = (error) => {
-           console.error('Error en RTCPeerConnection (usuario):', error);
-           callStatusEl.textContent = `Error: ${error.message}`;
-           alert('Se produjo un error en la llamada.');
-            if (roomKey) { // Solo limpiar si hay roomKey activa
-                cleanup(); // Limpiar en caso de error grave
-            }
-       };
+    // --- Lógica para iniciar el chat (lado usuario) ---
+    function initChatUser(roomKey) {
+        console.log("Iniciando chat para Room Key:", roomKey);
+        showView('chatUserView');
+        roomKeyDisplayUserChat.textContent = roomKey;
+        userMessagesEl.innerHTML = ''; // Limpiar mensajes anteriores
 
+        const chatRef = ref(db, `chats/${roomKey}`);
 
-      // --- Lógica para recibir Oferta del Caller (Admin) ---
-      // El usuario (Callee) espera la oferta del admin
-      // Detach previous listener if any (redundante con cleanup, pero seguro)
-       if (offerListener) {
-            off(ref(db, `calls/${roomKey}/offer`), offerListener);
-            offerListener = null;
-       }
+        // Listen for new messages
+        onChildAdded(chatRef, (snapshot) => {
+            const message = snapshot.val();
+            console.log("Nuevo mensaje:", message);
+            const div = document.createElement('div');
+            div.className = message.sender === 'user' ? 'message sent' : 'message received';
+            div.innerHTML = `<span>${message.sender === 'user' ? userName : 'Admin'}</span><span>${message.text}</span>`;
+            userMessagesEl.append(div);
+            userMessagesEl.scrollTop = userMessagesEl.scrollHeight; // Auto-scroll to bottom
+        });
 
-      offerListener = onValue(ref(db, `calls/${roomKey}/offer`), async snap => {
-        if (!snap.exists()) {
-             console.log('No hay oferta del admin en la base de datos aún.');
-             return;
-        }
-        // Detach listener once offer is received and processed? No, keep it active?
-        // Maybe detach after processing the first offer, unless admin re-sends.
-        // Let's keep it simple and assume the first offer is the valid one.
-        // if (offerListener) { off(ref(db, `calls/${roomKey}/offer`), offerListener); offerListener = null; } // Optional: Detach after processing
+        // Send message button handler
+        sendUserChatBtn.onclick = async () => {
+            const text = userChatInput.value.trim();
+            if (!text) return;
 
-
-        const offer = JSON.parse(snap.val());
-        console.log('Oferta (admin) recibida:', offer);
-
-        // Asegurarse de que pc existe y no está cerrado
-        if (!pc || pc.signalingState === 'closed' || !roomKey) {
-             console.warn("RTCPeerConnection no lista o roomKey inválida al recibir oferta.");
-             return;
-        }
-
-        try {
-             // Verificar estado de señalización si es necesario (para escenarios avanzados)
-             if (pc.signalingState !== 'stable' && pc.remoteDescription) {
-                  console.warn('Estado de señalización no es estable, intentando establecer descripción remota...');
-                  // Puede que necesites lógica para renegociación aquí.
-             }
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            console.log('Descripción remota (oferta admin) establecida.');
-
-            // Crear y enviar Respuesta (Answer)
-            const answer = await pc.createAnswer();
-            console.log('Respuesta (usuario) creada:', answer);
-            await pc.setLocalDescription(answer);
-            console.log('Descripción local (respuesta usuario) establecida.');
-
-            // Enviar respuesta a Firebase para que el admin la recoja
-            set(ref(db, `calls/${roomKey}/answer`), JSON.stringify(answer))
-            .then(() => console.log('Respuesta (usuario) enviada a Firebase.'))
-            .catch(error => console.error('Error al enviar respuesta (usuario):', error));
-
-            callStatusEl.textContent = 'Estableciendo conexión...';
-
-
-        } catch (error) {
-            console.error('Error al procesar oferta o crear respuesta:', error);
-            callStatusEl.textContent = `Error: ${error.message}`;
-            alert('Error al procesar la oferta de llamada del admin.');
-            cleanup(); // Limpiar si hay error en el procesamiento de la oferta
-        }
-      });
-
-      // --- Lógica para recibir Candidatos ICE del Caller (Admin) ---
-      // El usuario (Callee) espera los candidatos ICE del admin
-      // Detach previous listener if any (redundante con cleanup, pero seguro)
-       if (callerCandidatesListener) {
-           off(ref(db, `calls/${roomKey}/callerCandidates`), callerCandidatesListener);
-           callerCandidatesListener = null;
-       }
-
-      callerCandidatesListener = onValue(ref(db, `calls/${roomKey}/callerCandidates`), async snap => {
-        if (!snap.exists()) {
-             console.log('No hay candidatos ICE del admin aún.');
-             return;
-        }
-        const candidates = snap.val();
-        console.log('Candidatos ICE del admin recibidos:', candidates);
-
-        if (!pc || pc.signalingState === 'closed' || !roomKey) {
-             console.warn("RTCPeerConnection no lista o roomKey inválida al recibir candidatos del admin.");
-             return;
-        }
-
-        for (const key in candidates) {
             try {
-                const candidate = JSON.parse(candidates[key]);
-                 // Importante: Solo añadir candidato si la descripción remota (offer) ya está establecida
-                 if (pc.remoteDescription) {
-                     // Eliminar el candidato de Firebase *antes* de añadirlo para evitar procesarlo de nuevo
-                     // Esto también ayuda a limpiar la lista de candidatos en Firebase
-                      remove(ref(db, `calls/${roomKey}/callerCandidates/${key}`));
-                      pc.addIceCandidate(new RTCIceCandidate(candidate))
-                      .then(() => console.log('Candidato ICE del admin añadido:', candidate))
-                      .catch(error => console.error('Error al añadir candidato ICE del admin:', error));
-                 } else {
-                     console.warn('Descripción remota (offer) aún no establecida, candidato ICE del admin en espera:', candidate);
-                     // Podrías guardar los candidatos en una cola si llegan antes de la descripción remota.
-                 }
-
-            } catch (error) {
-                console.error('Error al parsear candidato ICE del admin:', error);
+                await push(chatRef, {
+                    sender: 'user',
+                    text: text,
+                    timestamp: serverTimestamp()
+                });
+                userChatInput.value = ''; // Clear input
+            } catch (e) {
+                console.error('Error al enviar mensaje:', e);
             }
+        };
+
+        // End chat button handler (User initiated - cleans up user side)
+        endUserChatBtn.onclick = () => {
+           // Note: This only ends the session on the user side.
+           // The admin must end it on their side to remove the data from DB.
+           console.log("Usuario finalizó el chat localmente.");
+           endHandlingUser("Has finalizado la sesión de chat.");
+        };
+    }
+
+    // --- Lógica para iniciar la llamada (lado usuario) ---
+    function initCallUser(roomKey) {
+        console.log("Iniciando llamada para Room Key:", roomKey);
+        showView('callUserView');
+        roomKeyDisplayUserCall.textContent = roomKey;
+        userCallStatusEl.textContent = 'Conectando...';
+
+        // --- WebRTC LOGIC HERE ---
+        // This part needs implementation for WebRTC peer connection,
+        // getting local stream, setting up ICE candidates, creating offer/answer
+        // and exchanging them via Firebase database ('calls/{roomKey}/offer', 'answer', 'calleeCandidates').
+        // This is a complex topic and requires significant code.
+        // The admin code also has this part pending.
+
+        // For now, just show the view and status
+        userCallStatusEl.textContent = 'Llamada iniciada (WebRTC pendiente)';
+        // Example placeholder for getting local media (requires user permission)
+        // navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        //     .then(stream => {
+        //         console.log('Local stream acquired:', stream);
+        //         userLocalVideo.srcObject = stream;
+        //         userLocalVideo.style.display = 'block';
+        //         // Proceed with WebRTC peer connection setup
+        //     })
+        //     .catch(error => {
+        //         console.error('Error getting user media:', error);
+        //         userCallStatusEl.textContent = 'Error al acceder a micrófono/cámara.';
+        //     });
+         userRemoteAudio.style.display = 'block'; // Show audio element placeholder
+
+        // End call button handler (User initiated - cleans up user side)
+        userHangUpBtn.onclick = () => {
+           // Note: This only ends the session on the user side.
+           // The admin must end it on their side to remove the data from DB.
+           console.log("Usuario finalizó la llamada localmente.");
+           endHandlingUser("Has finalizado la sesión de llamada.");
+           // TODO: Add logic to close WebRTC connection and stop tracks
+        };
+    }
+
+    // --- Lógica para finalizar el manejo (lado usuario) ---
+    function endHandlingUser(message = "Sesión finalizada.") {
+        console.log("Finalizando manejo del usuario.");
+        // Stop Firebase listeners associated with the session
+        if (activeRoomKey) {
+            off(ref(db, `chats/${activeRoomKey}`));
+            off(ref(db, `calls/${activeRoomKey}`));
+            off(ref(db, `requests/${activeRoomKey}`)); // Stop the listener that detected admin ending
         }
-      });
+         if (sessionEndListener) {
+             off(sessionEndListener); // Ensure the specific listener for session end is removed
+             sessionEndListener = null;
+         }
+
+        // Reset state variables
+        activeRoomKey = null;
+        activeRequestType = null;
+        userName = ''; // Reset user name for next request
+
+        // Clean up UI
+        userMessagesEl.innerHTML = '';
+        userChatInput.value = '';
+        userCallStatusEl.textContent = 'Iniciando llamada...';
+        userRemoteAudio.srcObject = null; // Stop audio playback
+        // if (userLocalVideo.srcObject) userLocalVideo.srcObject.getTracks().forEach(track => track.stop()); // WebRTC cleanup
+        // if (userRemoteVideo.srcObject) userRemoteVideo.srcObject.getTracks().forEach(track => track.stop()); // WebRTC cleanup
+        // userLocalVideo.srcObject = null;
+        // userRemoteVideo.srcObject = null;
+        // userLocalVideo.style.display = 'none';
+        // userRemoteVideo.style.display = 'none';
+        userRemoteAudio.style.display = 'none';
 
 
-      // --- Botón Colgar ---
-      hangUpBtn.onclick = () => {
-          console.log("Usuario haciendo clic en Colgar.");
-           // El usuario al colgar puede eliminar los datos de llamada en Firebase,
-           // y potencialmente la solicitud principal, aunque el admin también podría hacerlo.
-           // Para asegurar la limpieza, el usuario intenta eliminar los datos de llamada.
-           if (roomKey) {
-               remove(ref(db, `calls/${roomKey}`))
-               .then(() => console.log(`Datos de llamada ${roomKey} eliminados por el usuario.`))
-               .catch(error => console.error('Error al eliminar datos de llamada por usuario:', error));
+        // Show home view and provide feedback
+        showView('homeView');
+        alert(message); // Inform the user why the session ended
 
-                // Opcional: El usuario también podría intentar eliminar la solicitud principal
-                // remove(ref(db, `requests/${roomKey}`)); // Si el admin ya la eliminó al aceptar, esto fallará o no hará nada.
-           }
-          cleanup(); // Limpiar recursos locales y volver al inicio
-      };
+        // Restore initial form state
+        userNameInput.value = ''; // Optionally keep username or clear
+        messageInput.value = '';
+        requestTypeSelect.value = 'chat';
+        makeRequestBtn.disabled = false;
+    }
 
-       // --- Manejo de cierre de ventana ---
-       window.addEventListener('beforeunload', async () => {
-            console.log('Ventana del usuario cerrándose. Intentando limpiar recursos...');
-            // Si hay una sesión activa, intentar finalizarla limpiando recursos locales
-            if (roomKey) {
-                 console.log(`Limpiando sesión activa para sala ${roomKey} en beforeunload.`);
-                 // Limpiar recursos locales (WebRTC, streams, listeners)
-                 if (pc && pc.connectionState !== 'closed') { pc.close(); pc = null; }
-                 if (localStream) { localStream.getTracks().forEach(t=>t.stop()); localStream = null; }
-                 if (remoteAudio) { remoteAudio.srcObject = null; remoteAudio.style.display = 'none'; }
-                 // Detener listeners de Firebase
-                 if (statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
-                 if (chatMessagesListener) off(ref(db, `chats/${roomKey}`), chatMessagesListener);
-                 if (offerListener) off(ref(db, `calls/${roomKey}/offer`), offerListener);
-                 if (callerCandidatesListener) off(ref(db, `calls/${roomKey}/callerCandidates`), callerCandidatesListener);
-
-                 // Intentar eliminar la solicitud y/o datos de llamada en Firebase (mejor si el admin lo hace, pero se intenta)
-                 try {
-                      console.log(`Intentando eliminar datos de Firebase para sala ${roomKey} en beforeunload.`);
-                      await remove(ref(db, `requests/${roomKey}`));
-                      await remove(ref(db, `chats/${roomKey}`));
-                      await remove(ref(db, `calls/${roomKey}`));
-                 } catch (e) {
-                      console.warn(`Error o no se pudieron eliminar todos los datos de Firebase para sala ${roomKey} en beforeunload:`, e);
-                 }
-            }
-            console.log('Proceso beforeunload completado.');
-       });
-
-    } // Fin de initCall
-
-
-    // Nota: La función cleanup ya detiene los listeners y limpia recursos WebRTC.
-    // Los listeners de onValue para chat y call se gestionan para que se detengan en cleanup.
-    // Los listeners de onChildAdded/Removed para la lista del admin panel no aplican aquí.
-
+    // --- Opcional: Lógica para cancelar la solicitud desde la vista de espera ---
+    // if (cancelRequestBtn) {
+    //     cancelRequestBtn.onclick = async () => {
+    //         if (activeRoomKey) {
+    //             try {
+    //                 await remove(ref(db, `requests/${activeRoomKey}`));
+    //                 console.log("Solicitud cancelada por el usuario.");
+    //                 endHandlingUser("Tu solicitud ha sido cancelada.");
+    //             } catch (e) {
+    //                 console.error("Error al cancelar solicitud:", e);
+    //                 alert("No se pudo cancelar la solicitud.");
+    //             }
+    //         } else {
+    //             endHandlingUser("No hay solicitud activa para cancelar.");
+    //         }
+    //     };
+    // }
 
   </script>
 </body>
