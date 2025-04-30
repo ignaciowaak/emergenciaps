@@ -1,15 +1,7 @@
 
 <!DOCTYPE html>
 <html>
-<head><title>Usuario</title>
-<style>
-  <body>
-    background{
-      color:black;
-    }
-  </body>
-</style>
-</head>
+<head><meta charset="utf-8"><title>Usuario</title></head>
 <body>
   <h2>Usuario</h2>
   <button id="startCall">Iniciar llamada</button>
@@ -18,69 +10,61 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, push, set, onValue, onDisconnect, child } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { getDatabase, ref, push, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
-      authDomain: "the-pic-c437e.firebaseapp.com",
-      databaseURL: "https://the-pic-c437e-default-rtdb.firebaseio.com",
-      projectId: "the-pic-c437e",
-      storageBucket: "the-pic-c437e.appspot.com",
-      messagingSenderId: "750954597180",
-      appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
-    };
-
+    // Config Firebase
+    const firebaseConfig = { /* tu config igual */ };
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
     const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-    let pc = new RTCPeerConnection(servers);
-    let localStream;
+    let pc, localStream, remoteStream;
 
     document.getElementById("startCall").onclick = async () => {
+      // 1) Capturá micrófono
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      // 2) Prepará RTCPeerConnection y streams
+      pc = new RTCPeerConnection(servers);
+      remoteStream = new MediaStream();
+      document.getElementById("remoteAudio").srcObject = remoteStream;
 
+      // 3) Añadí tracks locales
+      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+      // 4) Envío ICE candidates
+      pc.onicecandidate = e => {
+        if (e.candidate) push(ref(db, `calls/${callId}/callerCandidates`), e.candidate.toJSON());
+      };
+
+      // 5) Recibí tracks remotos
+      pc.ontrack = e => {
+        remoteStream.addTrack(e.track);
+      };
+
+      // 6) Creá llamada en Firebase
       const callRef = push(ref(db, "calls"));
       const callId = callRef.key;
       document.getElementById("status").innerText = "Esperando admin...";
-
-      pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          push(ref(db, `calls/${callId}/callerCandidates`), e.candidate.toJSON());
-        }
-      };
-
-      pc.ontrack = (event) => {
-        const remoteAudio = document.getElementById("remoteAudio");
-        remoteAudio.srcObject = event.streams[0];
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      await set(callRef, {
-        status: "waiting",
-        offer: offer
-      });
-
       onDisconnect(callRef).remove();
 
-      onValue(ref(db, `calls/${callId}/answer`), async snapshot => {
-        if (snapshot.exists()) {
-          const answer = snapshot.val();
-          if (!pc.currentRemoteDescription) {
-            await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            document.getElementById("status").innerText = "Conectado!";
-          }
+      // 7) Oferta SDP
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await set(callRef, { status: "waiting", offer });
+
+      // 8) Esperá respuesta
+      onValue(ref(db, `calls/${callId}/answer`), snap => {
+        const ans = snap.val();
+        if (ans && !pc.currentRemoteDescription) {
+          pc.setRemoteDescription(new RTCSessionDescription(ans))
+            .then(() => document.getElementById("status").innerText = "Conectado!")
+            .catch(console.error);
         }
       });
 
-      onValue(ref(db, `calls/${callId}/adminCandidates`), snapshot => {
-        snapshot.forEach(child => {
-          const data = child.val();
-          pc.addIceCandidate(new RTCIceCandidate(data));
-        });
+      // 9) ICE candidates del admin
+      onValue(ref(db, `calls/${callId}/adminCandidates`), snap => {
+        snap.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c.val())));
       });
     };
   </script>

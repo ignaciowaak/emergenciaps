@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<head><title>Admin</title></head>
+<head><meta charset="utf-8"><title>Admin</title></head>
 <body>
   <h2>Administrador</h2>
   <ul id="calls"></ul>
@@ -8,72 +8,63 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, onChildAdded, set, push, get, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { getDatabase, ref, onChildAdded, get, set, push, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
-      authDomain: "the-pic-c437e.firebaseapp.com",
-      databaseURL: "https://the-pic-c437e-default-rtdb.firebaseio.com",
-      projectId: "the-pic-c437e",
-      storageBucket: "the-pic-c437e.appspot.com",
-      messagingSenderId: "750954597180",
-      appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
-    };
-
+    const firebaseConfig = { /* tu config igual */ };
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
+
     const servers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+    let inCall = false, pc, remoteStream;
 
-    let inCall = false;
-
-    onChildAdded(ref(db, "calls"), async snapshot => {
-      const callId = snapshot.key;
-      const data = snapshot.val();
-
+    onChildAdded(ref(db, "calls"), snap => {
+      const id = snap.key, data = snap.val();
       if (data.status === "waiting" && !inCall) {
         const li = document.createElement("li");
-        li.innerText = `Llamada: ${callId}`;
+        li.textContent = `Llamada: ${id} `;
         const btn = document.createElement("button");
-        btn.innerText = "Aceptar";
-        btn.onclick = () => joinCall(callId);
-        li.appendChild(btn);
-        document.getElementById("calls").appendChild(li);
+        btn.textContent = "Aceptar";
+        btn.onclick = () => join(id);
+        li.append(btn);
+        document.getElementById("calls").append(li);
       }
     });
 
-    async function joinCall(callId) {
+    async function join(callId) {
       inCall = true;
-      const pc = new RTCPeerConnection(servers);
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      // 1) Prepará conexión y streams
+      pc = new RTCPeerConnection(servers);
+      remoteStream = new MediaStream();
+      document.getElementById("remoteAudio").srcObject = remoteStream;
 
-      pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          push(ref(db, `calls/${callId}/adminCandidates`), e.candidate.toJSON());
-        }
+      // 2) Mic local
+      const local = await navigator.mediaDevices.getUserMedia({ audio: true });
+      local.getTracks().forEach(t => pc.addTrack(t, local));
+
+      // 3) ICE candidates
+      pc.onicecandidate = e => {
+        if (e.candidate) push(ref(db, `calls/${callId}/adminCandidates`), e.candidate.toJSON());
       };
+      pc.ontrack = e => { remoteStream.addTrack(e.track); };
 
-      pc.ontrack = (event) => {
-        const remoteAudio = document.getElementById("remoteAudio");
-        remoteAudio.srcObject = event.streams[0];
-      };
-
+      // 4) Leé la oferta del usuario
       const callRef = ref(db, `calls/${callId}`);
-      const callData = await get(callRef);
-      const offer = callData.val().offer;
+      const snap = await get(callRef);
+      const offer = snap.val().offer;
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // 5) Creá y enviá respuesta SDP
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await set(ref(db, `calls/${callId}/answer`), answer);
 
-      onValue(ref(db, `calls/${callId}/callerCandidates`), snapshot => {
-        snapshot.forEach(child => {
-          const data = child.val();
-          pc.addIceCandidate(new RTCIceCandidate(data));
-        });
+      // 6) ICE candidates del caller
+      onValue(ref(db, `calls/${callId}/callerCandidates`), s => {
+        s.forEach(c => pc.addIceCandidate(new RTCIceCandidate(c.val())));
       });
 
-      await set(ref(db, `calls/${callId}/status`), "in-progress");
+      // 7) Marcar en curso
+      set(callRef, { status: "in-progress", offer, answer });
     }
   </script>
 </body>
