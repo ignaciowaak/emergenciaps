@@ -6,7 +6,7 @@
 <body>
   <h2>Administrador</h2>
   <ul id="queue"></ul>
-  <audio id="remoteAudio" autoplay></audio>  <script type="module">
+  <audio id="remoteAudio" controls autoplay></audio>  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getDatabase, ref, onChildAdded, get, set, push, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
@@ -41,15 +41,21 @@
       const pc = new RTCPeerConnection(iceConfig);
       const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const remoteStream = new MediaStream();
-      document.getElementById('remoteAudio').srcObject = remoteStream;
+      const remoteAudio = document.getElementById('remoteAudio');
+      remoteAudio.srcObject = remoteStream;
 
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      pc.ontrack = event => remoteStream.addTrack(event.track);
+
+      pc.ontrack = event => {
+        remoteStream.addTrack(event.track);
+        remoteAudio.play().catch(() => {});
+      };
+
       pc.onicecandidate = event => {
         if (event.candidate) push(ref(db, `calls/${callId}/adminCandidates`), event.candidate.toJSON());
       };
 
-      // Obtener oferta del usuario
+      // Obtener oferta
       const offerSnap = await get(ref(db, `calls/${callId}/offer`));
       await pc.setRemoteDescription(new RTCSessionDescription(offerSnap.val()));
 
@@ -61,7 +67,7 @@
       // Escuchar candidatos del caller
       onValue(ref(db, `calls/${callId}/callerCandidates`), snap => snap.forEach(child => pc.addIceCandidate(new RTCIceCandidate(child.val()))));
 
-      // Marcar llamada en curso
+      // Marcar en progreso
       await set(ref(db, `calls/${callId}`), { status: 'in-progress' });
     }
   </script></body>

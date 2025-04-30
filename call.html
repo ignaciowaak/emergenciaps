@@ -7,7 +7,7 @@
   <h2>Usuario</h2>
   <button id="startCall">Iniciar llamada</button>
   <p id="status">Esperando...</p>
-  <audio id="remoteAudio" autoplay></audio>  <script type="module">
+  <audio id="remoteAudio" controls autoplay></audio>  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getDatabase, ref, push, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
@@ -26,24 +26,32 @@
     const iceConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
     let pc, localStream, callRef;
+
     document.getElementById('startCall').onclick = async () => {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       pc = new RTCPeerConnection(iceConfig);
       const remoteStream = new MediaStream();
-      document.getElementById('remoteAudio').srcObject = remoteStream;
+      const remoteAudio = document.getElementById('remoteAudio');
+      remoteAudio.srcObject = remoteStream;
 
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      pc.ontrack = event => remoteStream.addTrack(event.track);
+
+      pc.ontrack = event => {
+        remoteStream.addTrack(event.track);
+        // Intentar autoplay y permitir play manual si falla
+        remoteAudio.play().catch(() => {});
+      };
+
       pc.onicecandidate = event => {
         if (event.candidate) push(ref(db, `calls/${callRef.key}/callerCandidates`), event.candidate.toJSON());
       };
 
-      // Crear nueva llamada
+      // Crear llamada
       callRef = push(ref(db, 'calls'));
       await set(callRef, { status: 'waiting' });
       onDisconnect(callRef).remove();
 
-      // Generar oferta
+      // Crear y enviar oferta
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await set(ref(db, `calls/${callRef.key}/offer`), offer);
@@ -57,10 +65,10 @@
         }
       });
 
-      // Recibir ICE candidates del admin
+      // Recibir candidatos ICE del admin
       onValue(ref(db, `calls/${callRef.key}/adminCandidates`), snap => {
         snap.forEach(child => pc.addIceCandidate(new RTCIceCandidate(child.val())));
       });
     };
   </script></body>
-</html>
+</html><!-- admin.html -->
