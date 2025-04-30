@@ -1,4 +1,3 @@
-<!-- ==== USER: call.html ==== -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8,26 +7,28 @@
   <style>
     :root {
       --primary-user: #FF9500;
-      --ios-bg: rgba(242,242,247,0.9);
-      --ios-blur: blur(20px);
-      --ios-shadow: 0 4px 6px rgba(0,0,0,0.1);
       --admin-color: #1DCC44;
+      --bg-ios: rgba(242,242,247,0.9);
+      --blur: blur(20px);
+      --shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    body { margin:0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f5f5f9; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#f5f5f9; }
     .view { display:none; width:100%; min-height:100vh; justify-content:center; align-items:center; padding:1rem; box-sizing:border-box; }
     .view.active { display:flex; }
-    .card { background:var(--ios-bg); backdrop-filter:var(--ios-blur); box-shadow:var(--ios-shadow); border-radius:14px; padding:2rem; width:100%; max-width:400px; text-align:center; }
+    .card { background:var(--bg-ios); backdrop-filter:var(--blur); box-shadow:var(--shadow); border-radius:14px; padding:2rem; width:100%; max-width:400px; text-align:center; }
     h2 { margin:0 0 1rem; color:#1c1c1e; }
-    input, select, button { width:100%; margin:0.5rem 0; padding:0.75rem; border-radius:10px; border:1px solid rgba(0,0,0,0.1); box-sizing:border-box; }
+    input, select, button { width:100%; margin:.5rem 0; padding:.75rem; border-radius:10px; border:1px solid rgba(0,0,0,0.1); box-sizing:border-box; }
     button { background:var(--primary-user); color:#fff; border:none; font-weight:500; cursor:pointer; }
-    button:disabled { opacity:0.5; cursor:default; }
-    .chat-container, .call-container { display:flex; flex-direction:column; width:100%; max-width:600px; height:90vh; background:var(--ios-bg); backdrop-filter:var(--ios-blur); box-shadow:var(--ios-shadow); border-radius:14px; padding:1rem; }
-    #userMessages, #messages { flex:1; overflow-y:auto; border:1px solid rgba(0,0,0,0.1); border-radius:10px; background:#fff; padding:1rem; display:flex; flex-direction:column; gap:0.5rem; }
-    .message { padding:0.5rem 0.75rem; border-radius:12px; max-width:80%; }
+    button:disabled { opacity:.5; cursor:default; }
+    .chat-container, .call-container { display:flex; flex-direction:column; width:100%; max-width:600px; height:90vh; background:var(--bg-ios); backdrop-filter:var(--blur); box-shadow:var(--shadow); border-radius:14px; padding:1rem; }
+    #userMessages, #messages { flex:1; overflow-y:auto; border:1px solid rgba(0,0,0,0.1); border-radius:10px; background:#fff; padding:1rem; display:flex; flex-direction:column; gap:.5rem; margin-bottom:.5rem; }
+    .message { padding:.5rem .75rem; border-radius:12px; max-width:80%; }
     .sent { align-self:flex-end; background:var(--primary-user); color:#fff; }
     .received { align-self:flex-start; background:#e5e5ea; color:#000; }
-    .input-area { display:flex; gap:0.5rem; margin-top:0.5rem; }
-    .input-area input { flex:1; padding:0.75rem; border:1px solid rgba(0,0,0,0.1); border-radius:10px; }
+    .input-area { display:flex; gap:.5rem; }
+    .input-area input { flex:1; padding:.75rem; border:1px solid rgba(0,0,0,0.1); border-radius:10px; }
+    .call-container video, .call-container audio { width:100%; margin-bottom:.5rem; background:black; border-radius:10px; display:none; }
+    .call-container #userHangUpBtn { background:#ff3b30; margin-top:auto; }
   </style>
 </head>
 <body>
@@ -47,7 +48,7 @@
       <h2>Esperando Respuesta...</h2>
       <p>Tu solicitud ha sido enviada. Aguardando atención.</p>
     </div>
-  </div>  <div id="chatUserView" class="view">
+  </div>  <div id="chatView" class="view">
     <div class="chat-container">
       <h2>Chat - Sala <span id="roomKeyChat"></span></h2>
       <div id="userMessages"></div>
@@ -57,16 +58,16 @@
       </div>
       <button id="endUserChatBtn" style="background:#ff3b30;">Finalizar Chat</button>
     </div>
-  </div>  <div id="callUserView" class="view">
+  </div>  <div id="callView" class="view">
     <div class="call-container">
       <h2>Llamada - Sala <span id="roomKeyCall"></span></h2>
-      <p id="userCallStatus">Conectando llamada...</p>
-      <audio id="userRemoteAudio" controls autoplay style="display:none;"></audio>
-      <button id="userHangUpBtn" style="background:#ff3b30;">Colgar Llamada</button>
+      <audio id="userRemoteAudio" controls autoplay></audio>
+      <button id="userHangUpBtn">Colgar Llamada</button>
     </div>
   </div>  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, push, serverTimestamp, onChildAdded, onValue, off, remove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { getDatabase, ref, push, serverTimestamp, onChildAdded, onValue, off } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { RTCPeerConnection, RTCSessionDescription } from "wrtc";
 
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
@@ -80,244 +81,80 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    const views = {
-      home: document.getElementById('homeView'),
-      waiting: document.getElementById('waitingView'),
-      chat: document.getElementById('chatUserView'),
-      call: document.getElementById('callUserView')
-    };
-    function show(view){ Object.values(views).forEach(v=>v.classList.remove('active')); views[view].classList.add('active'); }
+    const views = { home: 'homeView', waiting: 'waitingView', chat: 'chatView', call: 'callView' };
+    function show(v) { Object.values(views).forEach(id=>document.getElementById(id).classList.remove('active')); document.getElementById(views[v]).classList.add('active'); }
 
-    // Elementos usuario
-    const userNameInput = document.getElementById('userName');
-    const messageInput = document.getElementById('message');
-    const requestTypeSelect = document.getElementById('requestType');
-    const makeRequestBtn = document.getElementById('makeRequestBtn');
+    let roomKey, requestType, userName;
+    let pc;
 
-    // Elementos chat
-    const roomKeyChat = document.getElementById('roomKeyChat');
-    const userMessagesEl = document.getElementById('userMessages');
-    const userChatInput = document.getElementById('userChatInput');
-    const sendUserChatBtn = document.getElementById('sendUserChatBtn');
-    const endUserChatBtn = document.getElementById('endUserChatBtn');
-
-    // Elementos llamada
-    const roomKeyCall = document.getElementById('roomKeyCall');
-    const userCallStatusEl = document.getElementById('userCallStatus');
-    const userRemoteAudio = document.getElementById('userRemoteAudio');
-    const userHangUpBtn = document.getElementById('userHangUpBtn');
-
-    let activeRoomKey = null;
-    let activeRequestType = null;
-    let userName = '';
-    let listeners = [];
-
-    makeRequestBtn.onclick = async () => {
-      userName = userNameInput.value.trim();
-      const text = messageInput.value.trim();
-      const type = requestTypeSelect.value;
-      if (!userName || !text) { alert('Completa nombre y emergencia'); return; }
-      makeRequestBtn.disabled = true;
-      try {
-        const newRef = push(ref(db, 'requests'), { user: userName, message: text, type, timestamp: serverTimestamp() });
-        activeRoomKey = newRef.key;
-        activeRequestType = type;
-        show('waiting');
-        monitor();
-      } catch {
-        alert('Error al enviar solicitud');
-      } finally {
-        makeRequestBtn.disabled = false;
-      }
+    document.getElementById('makeRequestBtn').onclick = async ()=>{
+      userName = document.getElementById('userName').value.trim();
+      const msg = document.getElementById('message').value.trim();
+      requestType = document.getElementById('requestType').value;
+      if(!userName||!msg){return alert('Completa nombre y mensaje');}
+      const newRef = await push(ref(db, 'requests'), { user:userName, message:msg, type:requestType, timestamp:serverTimestamp() });
+      roomKey = newRef.key;
+      show('waiting'); monitor();
     };
 
-    function monitor() {
-      const reqRef = ref(db, `requests/${activeRoomKey}`);
-      const chatRef = ref(db, `chats/${activeRoomKey}`);
-      const callRef = ref(db, `calls/${activeRoomKey}`);
+    function monitor(){
+      const reqRef = ref(db, `requests/${roomKey}`);
+      const chatRef = ref(db, `chats/${roomKey}`);
+      const callRef = ref(db, `calls/${roomKey}`);
 
-      // Chat iniciado cuando aparece primer mensaje
-      const chatInit = onChildAdded(chatRef, snap => {
-        cleanup();
-        initChat();
+      onChildAdded(chatRef, ()=>{ show('chat'); setupChat(chatRef); });
+      onValue(reqRef, snap=>{ if(!snap.exists()&&requestType==='call'){ show('call'); setupCall(callRef); }});
+      onChildAdded(callRef, ()=>{ show('call'); setupCall(callRef); });
+    }
+
+    function setupChat(chatRef){
+      document.getElementById('roomKeyChat').textContent = roomKey;
+      onChildAdded(chatRef, snap=>{
+        const m=snap.val(); const d=document.createElement('div');
+        d.className = m.sender==='user'?'message sent':'message received';
+        d.innerHTML = `<span>${m.sender}</span><br>${m.text}`;
+        document.getElementById('userMessages').append(d);
       });
-      listeners.push(chatInit);
+      document.getElementById('sendUserChatBtn').onclick=()=>{
+        const t=document.getElementById('userChatInput').value.trim(); if(!t) return;
+        push(chatRef,{ sender:'user', text:t, timestamp:serverTimestamp() });
+        document.getElementById('userChatInput').value='';
+      };
+      document.getElementById('endUserChatBtn').onclick=()=>show('home');
+    }
 
-      // Llamada iniciada por remoción de la request (admin atendió)
-      const reqRem = onValue(reqRef, snap => {
-        if (!snap.exists() && activeRequestType === 'call') {
-          cleanup();
-          initCall();
+    async function setupCall(callRef){
+      document.getElementById('roomKeyCall').textContent = roomKey;
+      const localStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      pc = new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'}] });
+      localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
+
+      const offerCandidatesRef = ref(callRef, 'offerCandidates');
+      const answerCandidatesRef = ref(callRef, 'answerCandidates');
+
+      pc.onicecandidate = e=>{ if(e.candidate) push(answerCandidatesRef, e.candidate.toJSON()); };
+      onChildAdded(offerCandidatesRef, snap=> pc.addIceCandidate(snap.val()));
+
+      // Esperar oferta
+      onValue(callRef, async snap=>{
+        const data = snap.val();
+        if(data && data.offer && !pc.currentRemoteDescription){
+          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          push(callRef, { answer:answer.toJSON() });
         }
       });
-      listeners.push(reqRem);
 
-      // Llamada iniciada por datos en /calls
-      const callInit = onChildAdded(callRef, snap => {
-        cleanup();
-        initCall();
-      });
-      listeners.push(callInit);
-    }
-
-    function initChat() {
-      show('chat');
-      roomKeyChat.textContent = activeRoomKey;
-      const chatRef = ref(db, `chats/${activeRoomKey}`);
-      // Escuchar mensajes
-      const chatMsg = onChildAdded(chatRef, snap => {
-        const m = snap.val();
-        const d = document.createElement('div');
-        d.className = m.sender === 'user' ? 'message sent' : 'message received';
-        d.innerHTML = `<span>${m.sender === 'user' ? userName : 'Admin'}</span><br>${m.text}`;
-        userMessagesEl.append(d);
-        userMessagesEl.scrollTop = userMessagesEl.scrollHeight;
-      });
-      listeners.push(chatMsg);
-
-      sendUserChatBtn.onclick = async () => {
-        const txt = userChatInput.value.trim();
-        if (!txt) return;
-        await push(chatRef, { sender: 'user', text: txt, timestamp: serverTimestamp() });
-        userChatInput.value = '';
+      pc.ontrack = e=>{
+        document.getElementById('userRemoteAudio').srcObject = e.streams[0];
+        document.getElementById('userRemoteAudio').style.display='block';
       };
 
-      endUserChatBtn.onclick = () => endSession('Has finalizado el chat.');
+      document.getElementById('userHangUpBtn').onclick=()=>{ pc.close(); show('home'); };
     }
 
-    function initCall() {
-      show('call');
-      roomKeyCall.textContent = activeRoomKey;
-      userCallStatusEl.textContent = 'Conectando llamada...';
-      userRemoteAudio.style.display = 'block';
-      userHangUpBtn.onclick = () => endSession('Has colgado la llamada.');
-    }
-
-    function cleanup() {
-      listeners.forEach(off);
-      listeners = [];
-    }
-
-    function endSession(msg) {
-      cleanup();
-      activeRoomKey = null;
-      activeRequestType = null;
-      userMessagesEl.innerHTML = '';
-      userChatInput.value = '';
-      userRemoteAudio.srcObject = null;
-      userRemoteAudio.style.display = 'none';
-      show('home');
-      alert(msg);
-    }
-
-    // Iniciar
+    // Init
     show('home');
-  </script><!-- ==== ADMIN: admin.html ==== --><!DOCTYPE html><html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Panel</title>
-  <style>
-    :root {
-      --primary-admin: #1DCC44;
-      --ios-bg: rgba(242,242,247,0.9);
-      --ios-blur: blur(20px);
-      --ios-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      --user-color: #FF9500;
-    }
-    body { margin:0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f5f5f9; }
-    .view { display:none; width:100%; min-height:100vh; justify-content:center; align-items:center; padding:1rem; box-sizing:border-box; }
-    .view.active { display:flex; }
-    .card { background:var(--ios-bg); backdrop-filter:var(--ios-blur); box-shadow:var(--ios-shadow); border-radius:14px; padding:2rem; width:100%; max-width:600px; text-align:center; }
-    h2 { margin:0 0 1rem; color:#1c1c1e; }
-    input, button { width:100%; margin:0.5rem 0; padding:0.75rem; border-radius:10px; border:1px solid rgba(0,0,0,0.1); box-sizing:border-box; }
-    button { background:var(--primary-admin); color:#fff; border:none; font-weight:500; cursor:pointer; }
-    button:disabled { opacity:0.5; cursor:default; }
-    #logoutBtn { background:#ff3b30; }
-    #requestsList { list-style:none; padding:0; margin:1rem 0; max-height:50vh; overflow-y:auto; }
-    .request { background:var(--ios-bg); backdrop-filter:var(--ios-blur); box-shadow:var(--ios-shadow); border-radius:14px; padding:1rem; margin:0.5rem 0; text-align:left; }
-    .request h4 { margin:0 0 0.5rem; }
-    .request p { margin:0 0 0.5rem; }
-    .request button { width:auto; padding:0.5rem 1rem; }
-  </style>
-</head>
-<body>
-  <div id="loginView" class="view active">
-    <div class="card">
-      <h2>Admin Login</n2>
-      <input id="email" type="email" placeholder="Email" />
-      <input id="password" type="password" placeholder="Contraseña" />
-      <button id="loginBtn">Ingresar</button>
-    </div>
-  </div>
-  <div id="panelView" class="view">
-    <div class="card">
-      <h2>Solicitudes Pendientes</h2>
-      <ul id="requestsList"></ul>
-      <button id="logoutBtn">Cerrar Sesión</button>
-    </div>
-  </div>  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getDatabase, ref, onChildAdded, onChildRemoved, remove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+  </script>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
-      authDomain: "the-pic-c437e.firebaseapp.com",
-      databaseURL: "https://the-pic-c437e-default-rtdb.firebaseio.com",
-      projectId: "the-pic-c437e",
-      storageBucket: "the-pic-c437e.appspot.com",
-      messagingSenderId: "750954597180",
-      appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
-    };
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getDatabase(app);
-
-    const loginView = document.getElementById('loginView');
-    const panelView = document.getElementById('panelView');
-    const loginBtn = document.getElementById('loginBtn');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const requestsList = document.getElementById('requestsList');
-
-    function show(v){[loginView, panelView].forEach(x=>x.classList.remove('active'));v.classList.add('active');}
-
-    loginBtn.onclick = async()=>{
-      loginBtn.disabled=true;
-      try{await signInWithEmailAndPassword(auth, email.value, password.value);}catch{alert('Credenciales inválidas');}
-      loginBtn.disabled=false;
-    };
-    logoutBtn.onclick = ()=>signOut(auth);
-
-    onAuthStateChanged(auth, user => {
-      if(user){ show(panelView); listen(); } else { show(loginView); requestsList.innerHTML=''; }
-    });
-
-    function listen(){
-      const reqRef = ref(db, 'requests');
-      onChildAdded(reqRef, snap => {
-        const d = snap.val(); const key=snap.key;
-        const li = document.createElement('li'); li.className='request';
-        li.innerHTML = `<h4>${d.type.toUpperCase()} - ${d.user}</h4><p>${d.message}</p>` +
-                       `<button onclick="attend('${key}','${d.type}')">Atender</button>`;
-        requestsList.prepend(li);
-      });
-      onChildRemoved(ref(db,'requests'), snap=>{
-        document.querySelector(`[onclick="attend('${snap.key}','${''}')"]`)?.closest('li')?.remove();
-      });
-    }
-
-    window.attend = (key,type) => {
-      remove(ref(db,`requests/${key}`));
-      if(type==='chat') startChat(key); else startCall(key);
-    };
-
-    function startChat(key){
-      // Redirigir o mostrar chat.html?roomKey=key
-      window.location.href = `chat.html?room=${key}`;
-    }
-    function startCall(key){
-      window.location.href = `call.html?room=${key}`;
-    }
-  </script></body>
-</html>
