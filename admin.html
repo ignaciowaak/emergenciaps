@@ -6,23 +6,49 @@
   <style>
     :root {
       --ios-primary: #007AFF;
+      --admin-primary: #1DCC44;
       --ios-background: rgba(242,242,247,0.9);
       --ios-blur: blur(20px);
       --ios-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      --user-color: #007AFF;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto; background: #f5f5f9; margin:0; min-height:100vh; display:flex; flex-direction:column; }
-    .view { flex:1; display:flex; justify-content:center; align-items:center; }
-    .hidden { display: none !important; }
-    .card { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:2rem; width:90%; max-width:400px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f9; margin:0; min-height:100vh; display:flex; flex-direction:column;
+    }
+    .view { display: none; width:100%; }
+    .view:not(.hidden) { flex:1; display:flex; justify-content:center; align-items:center; padding:20px; box-sizing:border-box; }
+    .hidden { display:none !important; }
+    .card { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:2rem; width:90%; max-width:400px; text-align:center; transition: opacity .3s, transform .3s; }
+    .card.hidden { opacity: 0; transform: scale(.95); }
     h2 { margin-top:0; color:#1c1c1e; }
-    input { width:100%; padding:12px; margin:0.5rem 0; border-radius:10px; border:1px solid rgba(0,0,0,0.1); background:white; }
+    input { width:100%; padding:12px; margin:.5rem 0; border-radius:10px; border:1px solid rgba(0,0,0,0.1); background:white; box-sizing:border-box; }
     button { width:100%; padding:12px; margin-top:1rem; background:var(--ios-primary); color:white; border:none; border-radius:10px; font-weight:500; cursor:pointer; }
-    button:disabled { opacity:0.5; cursor:default; }
-    #requestsList { list-style:none; padding:0; max-height:60vh; overflow-y:auto; margin:0; }
-    .request { backdrop-filter: var(--ios-blur); background: rgba(255,255,255,0.9); border:1px solid rgba(0,0,0,0.03); border-radius:18px; margin:0.5rem 0; padding:1rem; box-shadow:var(--ios-shadow); }
-    .request h4 { margin:0 0 0.5rem 0; color:#1c1c1e; }
-    .request p { margin:0.25rem 0; color:#3a3a3c; font-size:0.9rem; }
-    .request button { width:auto; padding:8px 16px; margin-top:0.5rem; }
+    button:disabled { opacity:.5; cursor:default; }
+    /* Panel Solicitudes */
+    #panelView .card { max-width:600px; display:flex; flex-direction:column; }
+    #requestsList { list-style:none; padding:0; margin:0; width:100%; max-height:60vh; overflow-y:auto; }
+    .request { backdrop-filter: var(--ios-blur); background:rgba(255,255,255,0.9); border:1px solid rgba(0,0,0,.03); border-radius:18px; margin:.5rem 0; padding:1rem; box-shadow:var(--ios-shadow); display:flex; flex-direction:column; }
+    .request h4 { margin:0 .5rem 0 0; word-break:break-word; }
+    .request p { margin:.25rem 0; font-size:.9rem; word-break:break-word; }
+    .request button { width:auto; padding:8px 16px; margin-top:.5rem; align-self:flex-end; background-color:var(--admin-primary); }
+    #logoutBtn { background:#ff3b30; }
+    /* Chat */
+    .chat-container { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:1.5rem; width:95%; max-width:600px; display:flex; flex-direction:column; height:90vh; }
+    #messages { flex:1; overflow-y:auto; border:1px solid rgba(0,0,0,0.1); border-radius:10px; padding:1rem; background:#fff; margin-bottom:1rem; display:flex; flex-direction:column; gap:.5rem; }
+    .message { padding:.5rem .75rem; border-radius:12px; max-width:80%; word-wrap:break-word; }
+    .received { align-self:flex-start; background:#e5e5ea; color:#000; }
+    .received span:first-child { color:var(--user-color); font-weight:500; font-size:.9em; margin-bottom:.1em; }
+    .sent { align-self:flex-end; background:var(--admin-primary); color:#fff; }
+    .sent span:first-child { color:rgba(255,255,255,.8); font-weight:500; font-size:.9em; margin-bottom:.1em; }
+    .input-area { display:flex; gap:.5rem; }
+    #chatInput { flex:1; padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.1); }
+    #sendChatBtn { flex-shrink:0; }
+    #endChatBtn { background:#ff3b30; }
+    /* Llamada */
+    .call-container { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:2rem; width:95%; max-width:400px; text-align:center; display:flex; flex-direction:column; gap:1rem; }
+    #hangUpBtn { background:#ff3b30; }
+    #remoteAudio { display:none; width:100%; border-radius:10px; background:#000; }
   </style>
 </head>
 <body>
@@ -35,15 +61,33 @@
     </div>
   </div>  <div id="panelView" class="view hidden">
     <div class="card">
-      <h2>Solicitudes</h2>
+      <h2>Solicitudes Pendientes</h2>
       <ul id="requestsList"></ul>
       <button id="logoutBtn">Cerrar Sesión</button>
     </div>
+  </div>  <div id="chatAdminView" class="view hidden">
+    <div class="chat-container">
+      <h2>Chat de Emergencia Admin - Sala <span id="roomKeyDisplayChat"></span></h2>
+      <div id="messages"></div>
+      <div class="input-area">
+        <input type="text" id="chatInput" placeholder="Escribe tu mensaje" />
+        <button id="sendChatBtn">Enviar</button>
+      </div>
+      <button id="endChatBtn">Finalizar Chat</button>
+    </div>
+  </div>  <div id="callAdminView" class="view hidden">
+    <div class="call-container">
+      <h2>Llamada de Emergencia Admin - Sala <span id="roomKeyDisplayCall"></span></h2>
+      <p id="callStatus">Iniciando llamada...</p>
+      <audio id="remoteAudio" controls autoplay></audio>
+      <button id="hangUpBtn" disabled>Colgar Llamada</button>
+    </div>
   </div>  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-    import { getDatabase, ref, onChildAdded, remove } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js';
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getDatabase, ref, onChildAdded, onChildRemoved, remove, off, push, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
+    // Tu configuración de Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
       authDomain: "the-pic-c437e.firebaseapp.com",
@@ -53,65 +97,113 @@
       messagingSenderId: "750954597180",
       appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
     };
+
+    // Inicializar Firebase
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getDatabase(app);
 
     const loginView = document.getElementById('loginView');
     const panelView = document.getElementById('panelView');
+    const chatAdminView = document.getElementById('chatAdminView');
+    const callAdminView = document.getElementById('callAdminView');
     const loginBtn = document.getElementById('loginBtn');
     const logoutBtn = document.getElementById('logoutBtn');
     const requestsList = document.getElementById('requestsList');
+    const roomKeyDisplayChat = document.getElementById('roomKeyDisplayChat');
+    const messagesEl = document.getElementById('messages');
+    const chatInput = document.getElementById('chatInput');
+    const sendChatBtn = document.getElementById('sendChatBtn');
+    const endChatBtn = document.getElementById('endChatBtn');
+    const roomKeyDisplayCall = document.getElementById('roomKeyDisplayCall');
+    const callStatusEl = document.getElementById('callStatus');
+    const hangUpBtn = document.getElementById('hangUpBtn');
+    const remoteAudio = document.getElementById('remoteAudio');
 
-    onAuthStateChanged(auth, user => {
-      if (user) {
-        loginView.classList.add('hidden');
-        panelView.classList.remove('hidden');
-        listenRequests();
-      } else {
-        loginView.classList.remove('hidden');
-        panelView.classList.add('hidden');
-        requestsList.innerHTML = '';
-      }
-    });
+    let activeRoomKey = null;
+    let activeRequestType = null;
+    let requestStatusListenerPanel = null;
+
+    function showView(id) {
+      [loginView, panelView, chatAdminView, callAdminView].forEach(v => v.classList.add('hidden'));
+      document.getElementById(id).classList.remove('hidden');
+    }
 
     loginBtn.onclick = async () => {
-      const email = document.getElementById('email').value;
+      const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
+      if (!email || !password) { alert('Ingresa email y contraseña'); return; }
+      loginBtn.disabled = true;
       try {
         await signInWithEmailAndPassword(auth, email, password);
       } catch (e) {
+        console.error('Error login:', e);
         alert('Credenciales inválidas');
+      } finally {
+        loginBtn.disabled = false;
       }
     };
 
-    logoutBtn.onclick = () => signOut(auth);
+    logoutBtn.onclick = () => {
+      signOut(auth).catch(e => console.error('Error logout:', e));
+    };
+
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        showView('panelView'); listenRequests();
+      } else {
+        showView('loginView');
+        if (requestStatusListenerPanel) { off(ref(db,'requests'), requestStatusListenerPanel); requestStatusListenerPanel=null; }
+      }
+    });
 
     function listenRequests() {
-      const reqRef = ref(db, 'requests');
-      onChildAdded(reqRef, snap => {
-        const data = snap.val();
-        const key = snap.key;
-        // Crear elemento si no existe
-        if (document.getElementById('req-' + key)) return;
-        const li = document.createElement('li');
-        li.id = 'req-' + key;
-        li.className = 'request';
-        li.innerHTML = `
-          <h4>${data.type === 'chat' ? 'Chat' : 'Llamada'} #${key}</h4>
-          <p><strong>Usuario:</strong> ${data.name}</p>
-          <p><strong>Ubicación:</strong> ${data.lat || '-'}, ${data.lng || '-'}</p>
-          <p><strong>Navegador:</strong> ${data.userAgent}</p>
-          <button onclick="handle('${key}','${data.type}')">Atender</button>
-        `;
+      const reqRef = ref(db,'requests');
+      if (requestStatusListenerPanel) off(reqRef, requestStatusListenerPanel);
+      requestStatusListenerPanel = onChildAdded(reqRef, snap => {
+        const key = snap.key; const data = snap.val();
+        const li = document.createElement('li'); li.id='req-'+key;
+        li.innerHTML=`<div class="request"><h4>${data.type.toUpperCase()} - ${data.user}</h4><p>${data.message}</p><button onclick="startHandlingRequest('${key}','${data.type}')">Atender</button></div>`;
         requestsList.prepend(li);
       });
+      onChildRemoved(reqRef, snap => { document.getElementById('req-'+snap.key)?.remove(); });
     }
 
-    window.handle = (key, type) => {
-      const url = type === 'chat' ? `chat.html?room=${key}` : `call.html?room=${key}`;
-      window.open(url, '_blank');
-      remove(ref(db, 'requests/' + key));
-    };
+    function startHandlingRequest(key,type) {
+      activeRoomKey=key; activeRequestType=type;
+      document.getElementById('req-'+key)?.remove();
+      if(type==='chat') initChatAdmin(key); else initCallAdmin(key);
+    }
+    window.startHandlingRequest=startHandlingRequest;
+
+    function endHandlingRequest() {
+      if(activeRequestType==='chat') {
+        off(ref(db,`chats/${activeRoomKey}`)); remove(ref(db,`chats/${activeRoomKey}`)); remove(ref(db,`requests/${activeRoomKey}`));
+      } else {
+        off(ref(db,`calls/${activeRoomKey}/offer`)); off(ref(db,`calls/${activeRoomKey}/answer`)); off(ref(db,`calls/${activeRoomKey}/calleeCandidates`));
+        pc?.close(); localStream?.getTracks().forEach(t=>t.stop()); remoteAudio.srcObject=null;
+        remove(ref(db,`calls/${activeRoomKey}`)); remove(ref(db,`requests/${activeRoomKey}`));
+      }
+      activeRoomKey=null; activeRequestType=null; showView('panelView');
+    }
+
+    function initChatAdmin(roomKey) {
+      showView('chatAdminView'); roomKeyDisplayChat.textContent=roomKey;
+      const chatRef=ref(db,`chats/${roomKey}`);
+      onChildAdded(chatRef,snap=>{
+        const m=snap.val(); const div=document.createElement('div');
+        div.className=m.sender==='admin'?'message sent':'message received';
+        div.innerHTML=`<span>${m.sender}</span><span>${m.text}</span>`;
+        messagesEl.append(div); messagesEl.scrollTop=messagesEl.scrollHeight;
+      });
+      sendChatBtn.onclick=async()=>{ const text=chatInput.value.trim(); if(!text)return; try{ await push(chatRef,{sender:'admin',text,timestamp:serverTimestamp()}); chatInput.value=''; }catch(e){console.error(e);} };
+      endChatBtn.onclick=endHandlingRequest;
+    }
+
+    function initCallAdmin(roomKey) {
+      showView('callAdminView'); roomKeyDisplayCall.textContent=roomKey;
+      // Lógica WebRTC pendiente
+      hangUpBtn.onclick=endHandlingRequest;
+    }
   </script></body>
 </html>
