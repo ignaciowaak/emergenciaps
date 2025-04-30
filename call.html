@@ -139,7 +139,13 @@
     let activeRoomKey = null;
     let activeRequestType = null;
     let userName = '';
-    let sessionEndListener = null; // Listener para detectar cuándo el admin finaliza
+
+    // Listeners activos para poder detenerlos
+    let chatInitiationListener = null;
+    let callInitiationListener = null;
+    let sessionEndListener = null;
+    let chatMessagesListener = null;
+
 
     // Función para mostrar una vista
     function showView(id) {
@@ -176,8 +182,7 @@
         console.log("Solicitud enviada. Room Key:", activeRoomKey);
 
         // Clear form fields (optional)
-        // userNameInput.value = '';
-        messageInput.value = '';
+        messageInput.value = ''; // Only clear message
 
         showView('waitingView');
         monitorRequestStatus(); // Start monitoring for admin's response
@@ -196,54 +201,58 @@
 
       console.log("Monitoreando estado para Room Key:", activeRoomKey);
 
-      // Listen for the creation of the chat or call node by the admin
       const chatRoomRef = ref(db, `chats/${activeRoomKey}`);
       const callRoomRef = ref(db, `calls/${activeRoomKey}`);
+      const requestRef = ref(db, `requests/${activeRoomKey}`); // Keep monitoring the original request node
 
-      // Listener for chat session starting
-      const chatStartListener = onValue(chatRoomRef, (snapshot) => {
+      // Listener for chat session starting (any data appears in the chat room)
+      chatInitiationListener = onValue(chatRoomRef, (snapshot) => {
         if (snapshot.exists()) {
-          console.log("Chat session initiated by admin.");
-          off(callRoomRef, callStartListener); // Stop listening for call
-          initChatUser(activeRoomKey);
+          console.log("Chat session initiated by admin (data appeared in chat node).");
+          stopWaitingListeners(); // Stop monitoring for initiation
+          initChatUser(activeRoomKey); // Start chat interface
         }
-      }, { onlyOnce: true }); // Listen only for the first data
+      }); // No onlyOnce: true
 
-      // Listener for call session starting
-      const callStartListener = onValue(callRoomRef, (snapshot) => {
-        if (snapshot.exists()) {
-          console.log("Call session initiated by admin.");
-          off(chatRoomRef, chatStartListener); // Stop listening for chat
-          initCallUser(activeRoomKey);
-        }
-      }, { onlyOnce: true }); // Listen only for the first data
+      // Listener for call session starting (any data appears in the call room)
+      // This is crucial because the admin doesn't write call data immediately
+      callInitiationListener = onValue(callRoomRef, (snapshot) => {
+         if (snapshot.exists()) {
+            console.log("Call session initiated by admin (data appeared in call node).");
+            stopWaitingListeners(); // Stop monitoring for initiation
+            initCallUser(activeRoomKey); // Start call interface
+         }
+      }); // No onlyOnce: true
 
-      // Also listen for the admin *removing* the original request
-      // (based on admin code removing it right after accepting)
-      // This is less reliable as a session *start* signal, but good for detecting if admin cancels
-      const requestRef = ref(db, `requests/${activeRoomKey}`);
-       onValue(requestRef, (snapshot) => {
-          if (!snapshot.exists() && activeRoomKey && !chatUserView.classList.contains('hidden') && !callUserView.classList.contains('hidden')) {
-               // Request removed AFTER chat/call started - this means admin ended it
-               console.log("Admin ended the session (request removed after session started).");
-               endHandlingUser();
-           } else if (!snapshot.exists() && activeRoomKey && waitingView.classList.contains('hidden')) {
-               // Request removed while still waiting - admin cancelled or ignored
-               console.log("Admin cancelled or ignored the request.");
-               endHandlingUser("Tu solicitud fue cancelada o no pudo ser atendida."); // Provide feedback
-           }
-       }, { onlyOnce: false }); // Keep listening
-
-        // Set up listener to detect session end *after* it has started
-        sessionEndListener = onValue(activeRequestType === 'chat' ? chatRoomRef : callRoomRef, (snapshot) => {
-            if (!snapshot.exists() && (chatUserView.classList.contains('hidden') || callUserView.classList.contains('hidden'))) {
-                // The chat/call node was removed while we were in the session view
-                console.log("Session node removed. Admin ended the session.");
-                endHandlingUser("El administrador finalizó la sesión.");
+       // Listener to detect if the admin cancels the request *before* starting chat/call
+       // The admin code removes the request upon "Atender", but if they decide *not*
+       // to start the chat/call afterwards (e.g., refresh the page, bug), the user is stuck.
+       // This also catches the case where admin *removes* the request node but
+       // the chat/call node creation signal is somehow missed.
+       // We only act on this if we are still in the waiting view.
+        onValue(requestRef, (snapshot) => {
+            if (!snapshot.exists() && !waitingView.classList.contains('hidden')) {
+                 console.log("Original request node removed while waiting. Assuming admin cancelled or ignored.");
+                 stopWaitingListeners(); // Stop initiation listeners
+                 endHandlingUser("Tu solicitud fue cancelada o no pudo ser atendida por el momento.");
             }
-        });
+        }, { onlyOnce: true }); // Listen only for the *first* removal/non-existence
 
     }
+
+    // Stop listeners used while waiting for session initiation
+    function stopWaitingListeners() {
+        if (chatInitiationListener) {
+            off(chatInitiationListener);
+            chatInitiationListener = null;
+        }
+        if (callInitiationListener) {
+            off(callInitiationListener);
+            callInitiationListener = null;
+        }
+        // Note: The one-time listener on the requestRef removal also stops automatically
+    }
+
 
     // --- Lógica para iniciar el chat (lado usuario) ---
     function initChatUser(roomKey) {
@@ -255,15 +264,25 @@
         const chatRef = ref(db, `chats/${roomKey}`);
 
         // Listen for new messages
-        onChildAdded(chatRef, (snapshot) => {
+        chatMessagesListener = onChildAdded(chatRef, (snapshot) => {
             const message = snapshot.val();
             console.log("Nuevo mensaje:", message);
             const div = document.createElement('div');
             div.className = message.sender === 'user' ? 'message sent' : 'message received';
+             // Display sender name - use stored userName for user, or 'Admin'
             div.innerHTML = `<span>${message.sender === 'user' ? userName : 'Admin'}</span><span>${message.text}</span>`;
             userMessagesEl.append(div);
             userMessagesEl.scrollTop = userMessagesEl.scrollHeight; // Auto-scroll to bottom
         });
+
+         // Listen for admin ending the chat session (chat node is removed)
+        sessionEndListener = onValue(chatRef, (snapshot) => {
+            if (!snapshot.exists()) {
+                console.log("Admin ended the chat session.");
+                endHandlingUser("El administrador finalizó la sesión de chat.");
+            }
+        });
+
 
         // Send message button handler
         sendUserChatBtn.onclick = async () => {
@@ -298,6 +317,8 @@
         roomKeyDisplayUserCall.textContent = roomKey;
         userCallStatusEl.textContent = 'Conectando...';
 
+        const callRef = ref(db, `calls/${roomKey}`);
+
         // --- WebRTC LOGIC HERE ---
         // This part needs implementation for WebRTC peer connection,
         // getting local stream, setting up ICE candidates, creating offer/answer
@@ -305,21 +326,34 @@
         // This is a complex topic and requires significant code.
         // The admin code also has this part pending.
 
-        // For now, just show the view and status
+        // For now, just show the view and status, and listen for admin ending
         userCallStatusEl.textContent = 'Llamada iniciada (WebRTC pendiente)';
+        userRemoteAudio.style.display = 'block'; // Show audio element placeholder
+
+        // Listen for admin ending the call session (call node is removed)
+        sessionEndListener = onValue(callRef, (snapshot) => {
+            if (!snapshot.exists()) {
+                console.log("Admin ended the call session.");
+                endHandlingUser("El administrador finalizó la sesión de llamada.");
+            }
+        });
+
         // Example placeholder for getting local media (requires user permission)
         // navigator.mediaDevices.getUserMedia({ audio: true, video: true })
         //     .then(stream => {
         //         console.log('Local stream acquired:', stream);
         //         userLocalVideo.srcObject = stream;
         //         userLocalVideo.style.display = 'block';
+        //         userCallStatusEl.textContent = 'Llamada iniciada. Conectando...';
         //         // Proceed with WebRTC peer connection setup
         //     })
         //     .catch(error => {
         //         console.error('Error getting user media:', error);
-        //         userCallStatusEl.textContent = 'Error al acceder a micrófono/cámara.';
+        //         userCallStatusEl.textContent = 'Error: Acceso a micrófono/cámara denegado.';
+        //          // Optionally end session if media access fails
+        //          // endHandlingUser("No se pudo acceder a micrófono/cámara.");
         //     });
-         userRemoteAudio.style.display = 'block'; // Show audio element placeholder
+
 
         // End call button handler (User initiated - cleans up user side)
         userHangUpBtn.onclick = () => {
@@ -333,32 +367,35 @@
 
     // --- Lógica para finalizar el manejo (lado usuario) ---
     function endHandlingUser(message = "Sesión finalizada.") {
-        console.log("Finalizando manejo del usuario.");
-        // Stop Firebase listeners associated with the session
-        if (activeRoomKey) {
-            off(ref(db, `chats/${activeRoomKey}`));
-            off(ref(db, `calls/${activeRoomKey}`));
-            off(ref(db, `requests/${activeRoomKey}`)); // Stop the listener that detected admin ending
+        console.log("Finalizando manejo del usuario. Mensaje: " + message);
+
+        // Stop all active listeners
+        stopWaitingListeners(); // Ensure waiting listeners are off
+        if (chatMessagesListener) {
+            off(chatMessagesListener);
+            chatMessagesListener = null;
         }
-         if (sessionEndListener) {
-             off(sessionEndListener); // Ensure the specific listener for session end is removed
+        if (sessionEndListener) {
+             off(sessionEndListener);
              sessionEndListener = null;
          }
 
         // Reset state variables
         activeRoomKey = null;
         activeRequestType = null;
-        userName = ''; // Reset user name for next request
+        // Keep userName potentially for next request, or clear: userName = '';
 
         // Clean up UI
         userMessagesEl.innerHTML = '';
         userChatInput.value = '';
         userCallStatusEl.textContent = 'Iniciando llamada...';
-        userRemoteAudio.srcObject = null; // Stop audio playback
-        // if (userLocalVideo.srcObject) userLocalVideo.srcObject.getTracks().forEach(track => track.stop()); // WebRTC cleanup
-        // if (userRemoteVideo.srcObject) userRemoteVideo.srcObject.getTracks().forEach(track => track.stop()); // WebRTC cleanup
+
+        // Stop media tracks and clear video/audio elements (WebRTC cleanup)
+        // if (userLocalVideo.srcObject) userLocalVideo.srcObject.getTracks().forEach(track => track.stop());
+        // if (userRemoteVideo.srcObject) userRemoteVideo.srcObject.getTracks().forEach(track => track.stop());
         // userLocalVideo.srcObject = null;
         // userRemoteVideo.srcObject = null;
+        userRemoteAudio.srcObject = null; // Stop audio playback
         // userLocalVideo.style.display = 'none';
         // userRemoteVideo.style.display = 'none';
         userRemoteAudio.style.display = 'none';
@@ -366,10 +403,13 @@
 
         // Show home view and provide feedback
         showView('homeView');
-        alert(message); // Inform the user why the session ended
+        // Only show alert if it's not the default 'Sesión finalizada.'
+        if (message !== "Sesión finalizada.") {
+            alert(message);
+        }
 
-        // Restore initial form state
-        userNameInput.value = ''; // Optionally keep username or clear
+
+        // Restore initial form state (except maybe username)
         messageInput.value = '';
         requestTypeSelect.value = 'chat';
         makeRequestBtn.disabled = false;
@@ -380,6 +420,7 @@
     //     cancelRequestBtn.onclick = async () => {
     //         if (activeRoomKey) {
     //             try {
+    //                 // User cancels - remove the request from the queue
     //                 await remove(ref(db, `requests/${activeRoomKey}`));
     //                 console.log("Solicitud cancelada por el usuario.");
     //                 endHandlingUser("Tu solicitud ha sido cancelada.");
