@@ -6,12 +6,12 @@
   <title>Usuario - Emergencia</title>
   <style>
     :root {
-      --ios-primary: #007AFF; /* Azul */
-      --user-primary: #FF9500; /* Naranja */
+      --ios-primary: #007AFF;
+      --user-primary: #FF9500;
       --ios-background: rgba(242,242,247,0.9);
       --ios-blur: blur(20px);
       --ios-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      --admin-color: #1DCC44; /* Verde */
+      --admin-color: #1DCC44;
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -30,19 +30,18 @@
     .chat-container { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:1.5rem; width:95%; max-width:600px; display:flex; flex-direction:column; height:90vh; }
     #userMessages { flex:1; overflow-y:auto; border:1px solid rgba(0,0,0,0.1); border-radius:10px; padding:1rem; background:#fff; margin-bottom:1rem; display:flex; flex-direction:column; gap:.5rem; }
     .message { padding:.5rem .75rem; border-radius:12px; max-width:80%; word-wrap:break-word; }
-    .received { align-self:flex-start; background:#e5e5ea; color:#000; } /* Mensajes del Admin */
+    .received { align-self:flex-start; background:#e5e5ea; color:#000; }
     .received span:first-child { color:var(--admin-color); font-weight:500; font-size:.9em; margin-bottom:.1em; }
-    .sent { align-self:flex-end; background:var(--user-primary); color:#fff; } /* Mensajes del Usuario */
+    .sent { align-self:flex-end; background:var(--user-primary); color:#fff; }
     .sent span:first-child { color:rgba(255,255,255,.8); font-weight:500; font-size:.9em; margin-bottom:.1em; }
     .input-area { display:flex; gap:.5rem; }
     #userChatInput { flex:1; padding:10px; border-radius:10px; border:1px solid rgba(0,0,0,.1); }
     #sendUserChatBtn { flex-shrink:0; }
-    #endUserChatBtn { background:#ff3b30; /* Rojo */ }
+    #endUserChatBtn { background:#ff3b30; }
     /* Llamada */
     .call-container { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:2rem; width:95%; max-width:400px; text-align:center; display:flex; flex-direction:column; gap:1rem; }
-    #userHangUpBtn { background:#ff3b30; /* Rojo */ }
-    #userRemoteAudio { display:none; width:100%; border-radius:10px; background:#000; } /* Placeholder for audio */
-    #userLocalVideo, #userRemoteVideo { width: 100%; max-height: 250px; background: #000; border-radius: 10px; display: none; } /* Placeholders for video */
+    #userHangUpBtn { background:#ff3b30; }
+    #userRemoteAudio, #userLocalVideo, #userRemoteVideo { display:none; width:100%; max-height:250px; background:#000; border-radius:10px; }
   </style>
 </head>
 <body>
@@ -63,7 +62,7 @@
     <div class="card">
       <h2>Esperando Respuesta...</h2>
       <p id="waitingMessage">Tu solicitud ha sido enviada. Esperando que un administrador la atienda.</p>
-      </div>
+    </div>
   </div>
 
   <div id="chatUserView" class="view hidden">
@@ -79,7 +78,7 @@
   </div>
 
   <div id="callUserView" class="view hidden">
-     <div class="call-container">
+    <div class="call-container">
       <h2>Llamada de Emergencia - Sala <span id="roomKeyDisplayUserCall"></span></h2>
       <p id="userCallStatus">Iniciando llamada...</p>
       <video id="userLocalVideo" autoplay muted></video>
@@ -90,11 +89,9 @@
   </div>
 
   <script type="module">
-    // Importar módulos de Firebase
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, push, serverTimestamp, onChildAdded, off, remove, onValue } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { getDatabase, ref, push, serverTimestamp, onChildAdded, onValue, off, remove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-    // Tu configuración de Firebase (debe ser la misma que la del admin)
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
       authDomain: "the-pic-c437e.firebaseapp.com",
@@ -104,336 +101,145 @@
       messagingSenderId: "750954597180",
       appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
     };
-
-    // Inicializar Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // Referencias a las vistas
     const homeView = document.getElementById('homeView');
     const waitingView = document.getElementById('waitingView');
     const chatUserView = document.getElementById('chatUserView');
     const callUserView = document.getElementById('callUserView');
 
-    // Referencias a elementos de control
     const userNameInput = document.getElementById('userName');
     const messageInput = document.getElementById('message');
     const requestTypeSelect = document.getElementById('requestType');
     const makeRequestBtn = document.getElementById('makeRequestBtn');
-    // const cancelRequestBtn = document.getElementById('cancelRequestBtn'); // Opcional
 
-    const roomKeyDisplayUserChat = document.getElementById('roomKeyDisplayUserChat');
+    const roomKeyChat = document.getElementById('roomKeyDisplayUserChat');
     const userMessagesEl = document.getElementById('userMessages');
     const userChatInput = document.getElementById('userChatInput');
     const sendUserChatBtn = document.getElementById('sendUserChatBtn');
     const endUserChatBtn = document.getElementById('endUserChatBtn');
 
-    const roomKeyDisplayUserCall = document.getElementById('roomKeyDisplayUserCall');
+    const roomKeyCall = document.getElementById('roomKeyDisplayUserCall');
     const userCallStatusEl = document.getElementById('userCallStatus');
     const userHangUpBtn = document.getElementById('userHangUpBtn');
     const userRemoteAudio = document.getElementById('userRemoteAudio');
-    // const userLocalVideo = document.getElementById('userLocalVideo'); // WebRTC
-    // const userRemoteVideo = document.getElementById('userRemoteVideo'); // WebRTC
+    const userLocalVideo = document.getElementById('userLocalVideo');
+    const userRemoteVideo = document.getElementById('userRemoteVideo');
 
-    // Variables de estado
     let activeRoomKey = null;
     let activeRequestType = null;
     let userName = '';
+    let chatListener, callNodeListener, requestRemovedListener, sessionEndListener;
 
-    // Listeners activos para poder detenerlos
-    let chatInitiationListener = null;
-    let callInitiationListener = null;
-    let sessionEndListener = null;
-    let chatMessagesListener = null;
-
-
-    // Función para mostrar una vista
     function showView(id) {
       [homeView, waitingView, chatUserView, callUserView].forEach(v => v.classList.add('hidden'));
       document.getElementById(id).classList.remove('hidden');
     }
 
-    // Mostrar la vista inicial al cargar
-    showView('homeView');
-
-    // --- Lógica para hacer la solicitud ---
     makeRequestBtn.onclick = async () => {
       userName = userNameInput.value.trim();
-      const messageText = messageInput.value.trim();
-      const requestType = requestTypeSelect.value;
-
-      if (!userName || !messageText) {
-        alert('Por favor, ingresa tu nombre y describe la emergencia.');
-        return;
-      }
-
+      const text = messageInput.value.trim();
+      const type = requestTypeSelect.value;
+      if (!userName || !text) { alert('Ingresa nombre y detalle'); return; }
       makeRequestBtn.disabled = true;
       try {
-        // Pushing to 'requests' creates the request entry and gets a unique key
-        const newRequestRef = push(ref(db, 'requests'), {
+        const newRef = push(ref(db, 'requests'), {
           user: userName,
-          message: messageText,
-          type: requestType,
+          message: text,
+          type,
           timestamp: serverTimestamp()
         });
-        activeRoomKey = newRequestRef.key; // This is the unique key for the request/room
-        activeRequestType = requestType;
-
-        console.log("Solicitud enviada. Room Key:", activeRoomKey);
-
-        // Clear form fields (optional)
-        messageInput.value = ''; // Only clear message
-
+        activeRoomKey = newRef.key;
+        activeRequestType = type;
         showView('waitingView');
-        monitorRequestStatus(); // Start monitoring for admin's response
-
-      } catch (e) {
-        console.error('Error al enviar solicitud:', e);
-        alert('Hubo un error al enviar tu solicitud. Intenta de nuevo.');
+        monitorRequestStatus();
+      } catch {
+        alert('Error al enviar solicitud');
       } finally {
         makeRequestBtn.disabled = false;
       }
     };
 
-    // --- Lógica para monitorear el estado de la solicitud ---
     function monitorRequestStatus() {
-      if (!activeRoomKey) return;
+      const chatRef = ref(db, `chats/${activeRoomKey}`);
+      const callRef = ref(db, `calls/${activeRoomKey}`);
+      const reqRef  = ref(db, `requests/${activeRoomKey}`);
 
-      console.log("Monitoreando estado para Room Key:", activeRoomKey);
+      // Chat: esperamos el primer mensaje
+      chatListener = onChildAdded(chatRef, snap => {
+        off(chatListener);
+        initChatUser();
+      });
 
-      const chatRoomRef = ref(db, `chats/${activeRoomKey}`);
-      const callRoomRef = ref(db, `calls/${activeRoomKey}`);
-      const requestRef = ref(db, `requests/${activeRoomKey}`); // Keep monitoring the original request node
-
-      // Listener for chat session starting (any data appears in the chat room)
-      chatInitiationListener = onValue(chatRoomRef, (snapshot) => {
-        if (snapshot.exists()) {
-          console.log("Chat session initiated by admin (data appeared in chat node).");
-          stopWaitingListeners(); // Stop monitoring for initiation
-          initChatUser(activeRoomKey); // Start chat interface
+      // Llamada: el admin aún no crea datos en /calls, detectamos la REMOCIÓN de la request
+      requestRemovedListener = onValue(reqRef, snap => {
+        if (!snap.exists() && activeRequestType === 'call') {
+          off(requestRemovedListener);
+          initCallUser();
         }
-      }); // No onlyOnce: true
+      });
 
-      // Listener for call session starting (any data appears in the call room)
-      // This is crucial because the admin doesn't write call data immediately
-      callInitiationListener = onValue(callRoomRef, (snapshot) => {
-         if (snapshot.exists()) {
-            console.log("Call session initiated by admin (data appeared in call node).");
-            stopWaitingListeners(); // Stop monitoring for initiation
-            initCallUser(activeRoomKey); // Start call interface
-         }
-      }); // No onlyOnce: true
-
-       // Listener to detect if the admin cancels the request *before* starting chat/call
-       // The admin code removes the request upon "Atender", but if they decide *not*
-       // to start the chat/call afterwards (e.g., refresh the page, bug), the user is stuck.
-       // This also catches the case where admin *removes* the request node but
-       // the chat/call node creation signal is somehow missed.
-       // We only act on this if we are still in the waiting view.
-        onValue(requestRef, (snapshot) => {
-            if (!snapshot.exists() && !waitingView.classList.contains('hidden')) {
-                 console.log("Original request node removed while waiting. Assuming admin cancelled or ignored.");
-                 stopWaitingListeners(); // Stop initiation listeners
-                 endHandlingUser("Tu solicitud fue cancelada o no pudo ser atendida por el momento.");
-            }
-        }, { onlyOnce: true }); // Listen only for the *first* removal/non-existence
-
+      // Si el admin inicia realmente datos en /calls (offer/answer), también podemos detectar:
+      callNodeListener = onChildAdded(callRef, snap => {
+        off(callNodeListener);
+        initCallUser();
+      });
     }
 
-    // Stop listeners used while waiting for session initiation
-    function stopWaitingListeners() {
-        if (chatInitiationListener) {
-            off(chatInitiationListener);
-            chatInitiationListener = null;
-        }
-        if (callInitiationListener) {
-            off(callInitiationListener);
-            callInitiationListener = null;
-        }
-        // Note: The one-time listener on the requestRef removal also stops automatically
-    }
+    function initChatUser() {
+      showView('chatUserView');
+      roomKeyChat.textContent = activeRoomKey;
+      userMessagesEl.innerHTML = '';
 
+      const chatRef = ref(db, `chats/${activeRoomKey}`);
+      // Mensajes
+      sessionEndListener = onChildAdded(chatRef, snap => {
+        const m = snap.val();
+        const div = document.createElement('div');
+        div.className = m.sender === 'user' ? 'message sent' : 'message received';
+        div.innerHTML = `<span>${m.sender==='user'?userName:'Admin'}</span><span>${m.text}</span>`;
+        userMessagesEl.append(div);
+        userMessagesEl.scrollTop = userMessagesEl.scrollHeight;
+      });
 
-    // --- Lógica para iniciar el chat (lado usuario) ---
-    function initChatUser(roomKey) {
-        console.log("Iniciando chat para Room Key:", roomKey);
-        showView('chatUserView');
-        roomKeyDisplayUserChat.textContent = roomKey;
-        userMessagesEl.innerHTML = ''; // Limpiar mensajes anteriores
-
-        const chatRef = ref(db, `chats/${roomKey}`);
-
-        // Listen for new messages
-        chatMessagesListener = onChildAdded(chatRef, (snapshot) => {
-            const message = snapshot.val();
-            console.log("Nuevo mensaje:", message);
-            const div = document.createElement('div');
-            div.className = message.sender === 'user' ? 'message sent' : 'message received';
-             // Display sender name - use stored userName for user, or 'Admin'
-            div.innerHTML = `<span>${message.sender === 'user' ? userName : 'Admin'}</span><span>${message.text}</span>`;
-            userMessagesEl.append(div);
-            userMessagesEl.scrollTop = userMessagesEl.scrollHeight; // Auto-scroll to bottom
-        });
-
-         // Listen for admin ending the chat session (chat node is removed)
-        sessionEndListener = onValue(chatRef, (snapshot) => {
-            if (!snapshot.exists()) {
-                console.log("Admin ended the chat session.");
-                endHandlingUser("El administrador finalizó la sesión de chat.");
-            }
-        });
-
-
-        // Send message button handler
-        sendUserChatBtn.onclick = async () => {
-            const text = userChatInput.value.trim();
-            if (!text) return;
-
-            try {
-                await push(chatRef, {
-                    sender: 'user',
-                    text: text,
-                    timestamp: serverTimestamp()
-                });
-                userChatInput.value = ''; // Clear input
-            } catch (e) {
-                console.error('Error al enviar mensaje:', e);
-            }
-        };
-
-        // End chat button handler (User initiated - cleans up user side)
-        endUserChatBtn.onclick = () => {
-           // Note: This only ends the session on the user side.
-           // The admin must end it on their side to remove the data from DB.
-           console.log("Usuario finalizó el chat localmente.");
-           endHandlingUser("Has finalizado la sesión de chat.");
-        };
-    }
-
-    // --- Lógica para iniciar la llamada (lado usuario) ---
-    function initCallUser(roomKey) {
-        console.log("Iniciando llamada para Room Key:", roomKey);
-        showView('callUserView');
-        roomKeyDisplayUserCall.textContent = roomKey;
-        userCallStatusEl.textContent = 'Conectando...';
-
-        const callRef = ref(db, `calls/${roomKey}`);
-
-        // --- WebRTC LOGIC HERE ---
-        // This part needs implementation for WebRTC peer connection,
-        // getting local stream, setting up ICE candidates, creating offer/answer
-        // and exchanging them via Firebase database ('calls/{roomKey}/offer', 'answer', 'calleeCandidates').
-        // This is a complex topic and requires significant code.
-        // The admin code also has this part pending.
-
-        // For now, just show the view and status, and listen for admin ending
-        userCallStatusEl.textContent = 'Llamada iniciada (WebRTC pendiente)';
-        userRemoteAudio.style.display = 'block'; // Show audio element placeholder
-
-        // Listen for admin ending the call session (call node is removed)
-        sessionEndListener = onValue(callRef, (snapshot) => {
-            if (!snapshot.exists()) {
-                console.log("Admin ended the call session.");
-                endHandlingUser("El administrador finalizó la sesión de llamada.");
-            }
-        });
-
-        // Example placeholder for getting local media (requires user permission)
-        // navigator.mediaDevices.getUserMedia({ audio: true, video: true })
-        //     .then(stream => {
-        //         console.log('Local stream acquired:', stream);
-        //         userLocalVideo.srcObject = stream;
-        //         userLocalVideo.style.display = 'block';
-        //         userCallStatusEl.textContent = 'Llamada iniciada. Conectando...';
-        //         // Proceed with WebRTC peer connection setup
-        //     })
-        //     .catch(error => {
-        //         console.error('Error getting user media:', error);
-        //         userCallStatusEl.textContent = 'Error: Acceso a micrófono/cámara denegado.';
-        //          // Optionally end session if media access fails
-        //          // endHandlingUser("No se pudo acceder a micrófono/cámara.");
-        //     });
-
-
-        // End call button handler (User initiated - cleans up user side)
-        userHangUpBtn.onclick = () => {
-           // Note: This only ends the session on the user side.
-           // The admin must end it on their side to remove the data from DB.
-           console.log("Usuario finalizó la llamada localmente.");
-           endHandlingUser("Has finalizado la sesión de llamada.");
-           // TODO: Add logic to close WebRTC connection and stop tracks
-        };
-    }
-
-    // --- Lógica para finalizar el manejo (lado usuario) ---
-    function endHandlingUser(message = "Sesión finalizada.") {
-        console.log("Finalizando manejo del usuario. Mensaje: " + message);
-
-        // Stop all active listeners
-        stopWaitingListeners(); // Ensure waiting listeners are off
-        if (chatMessagesListener) {
-            off(chatMessagesListener);
-            chatMessagesListener = null;
-        }
-        if (sessionEndListener) {
-             off(sessionEndListener);
-             sessionEndListener = null;
-         }
-
-        // Reset state variables
-        activeRoomKey = null;
-        activeRequestType = null;
-        // Keep userName potentially for next request, or clear: userName = '';
-
-        // Clean up UI
-        userMessagesEl.innerHTML = '';
+      sendUserChatBtn.onclick = async () => {
+        const txt = userChatInput.value.trim();
+        if (!txt) return;
+        await push(chatRef, { sender:'user', text:txt, timestamp:serverTimestamp() });
         userChatInput.value = '';
-        userCallStatusEl.textContent = 'Iniciando llamada...';
+      };
 
-        // Stop media tracks and clear video/audio elements (WebRTC cleanup)
-        // if (userLocalVideo.srcObject) userLocalVideo.srcObject.getTracks().forEach(track => track.stop());
-        // if (userRemoteVideo.srcObject) userRemoteVideo.srcObject.getTracks().forEach(track => track.stop());
-        // userLocalVideo.srcObject = null;
-        // userRemoteVideo.srcObject = null;
-        userRemoteAudio.srcObject = null; // Stop audio playback
-        // userLocalVideo.style.display = 'none';
-        // userRemoteVideo.style.display = 'none';
-        userRemoteAudio.style.display = 'none';
-
-
-        // Show home view and provide feedback
-        showView('homeView');
-        // Only show alert if it's not the default 'Sesión finalizada.'
-        if (message !== "Sesión finalizada.") {
-            alert(message);
-        }
-
-
-        // Restore initial form state (except maybe username)
-        messageInput.value = '';
-        requestTypeSelect.value = 'chat';
-        makeRequestBtn.disabled = false;
+      endUserChatBtn.onclick = () => endSession("Has finalizado la sesión de chat.");
     }
 
-    // --- Opcional: Lógica para cancelar la solicitud desde la vista de espera ---
-    // if (cancelRequestBtn) {
-    //     cancelRequestBtn.onclick = async () => {
-    //         if (activeRoomKey) {
-    //             try {
-    //                 // User cancels - remove the request from the queue
-    //                 await remove(ref(db, `requests/${activeRoomKey}`));
-    //                 console.log("Solicitud cancelada por el usuario.");
-    //                 endHandlingUser("Tu solicitud ha sido cancelada.");
-    //             } catch (e) {
-    //                 console.error("Error al cancelar solicitud:", e);
-    //                 alert("No se pudo cancelar la solicitud.");
-    //             }
-    //         } else {
-    //             endHandlingUser("No hay solicitud activa para cancelar.");
-    //         }
-    //     };
-    // }
+    function initCallUser() {
+      showView('callUserView');
+      roomKeyCall.textContent = activeRoomKey;
+      userCallStatusEl.textContent = 'Conectando llamada...';
+      userRemoteAudio.style.display = 'block';
+      // Aquí irá la lógica WebRTC real
 
+      userHangUpBtn.onclick = () => endSession("Has finalizado la llamada.");
+    }
+
+    function endSession(alertMsg) {
+      [chatListener, callNodeListener, requestRemovedListener, sessionEndListener]
+        .forEach(fn => fn && off(fn));
+      activeRoomKey = null;
+      activeRequestType = null;
+      userMessagesEl.innerHTML = '';
+      userChatInput.value = '';
+      userRemoteAudio.srcObject = null;
+      userRemoteAudio.style.display = 'none';
+      userLocalVideo.srcObject = null; userLocalVideo.style.display = 'none';
+      userRemoteVideo.srcObject = null; userRemoteVideo.style.display = 'none';
+      showView('homeView');
+      alert(alertMsg);
+    }
+
+    // Arrancamos
+    showView('homeView');
   </script>
 </body>
 </html>
