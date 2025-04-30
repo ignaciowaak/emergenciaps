@@ -1,29 +1,17 @@
-<!DOCTYPE html>
-<html lang="es">
+<!-- user.html --><!DOCTYPE html><html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Unirse a Sala</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    body { font-family: sans-serif; margin: 1rem; }
-    h2 { color: #007AFF; }
-    input, button { padding: .5rem; margin: .5rem 0; }
-    input { width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 5px; }
-    button { background: #007AFF; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
-    audio { display: block; margin-top: 1rem; width: 100%; max-width: 300px; }
-  </style>
+  <title>Usuario - Llamada 1 a 1</title>
 </head>
 <body>
-  <h2>Ingresar a Sala</h2>
-  <input type="text" id="joinInput" placeholder="Código de sala">
-  <button id="joinBtn">Unirse</button>
-  <audio id="remoteAudioJoin" controls autoplay hidden></audio>
-
-  <script type="module">
+  <h2>Usuario</h2>
+  <button id="startCall">Iniciar llamada</button>
+  <p id="status">Esperando...</p>
+  <audio id="remoteAudio" autoplay></audio>  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, get, set, push, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+    import { getDatabase, ref, push, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
 
-    // --- Configuración Firebase ---
+    // Configuración Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
       authDomain: "the-pic-c437e.firebaseapp.com",
@@ -35,61 +23,44 @@
     };
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
+    const iceConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
-    const iceConfig = {
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" }
-      ]
-    };
-
-    let pc, localStream, roomCode = "";
-    const joinInput   = document.getElementById("joinInput");
-    const joinBtn     = document.getElementById("joinBtn");
-    const remoteAudio = document.getElementById("remoteAudioJoin");
-
-    async function initLocal() {
+    let pc, localStream, callRef;
+    document.getElementById('startCall').onclick = async () => {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    }
-
-    function createPC() {
       pc = new RTCPeerConnection(iceConfig);
-      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+      const remoteStream = new MediaStream();
+      document.getElementById('remoteAudio').srcObject = remoteStream;
 
-      pc.ontrack = e => {
-        remoteAudio.hidden = false;
-        remoteAudio.srcObject = e.streams[0];
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      pc.ontrack = event => remoteStream.addTrack(event.track);
+      pc.onicecandidate = event => {
+        if (event.candidate) push(ref(db, `calls/${callRef.key}/callerCandidates`), event.candidate.toJSON());
       };
 
-      pc.onicecandidate = e => {
-        if (e.candidate)
-          push(ref(db, `calls/${roomCode}/calleeCandidates`), JSON.stringify(e.candidate));
-      };
-    }
+      // Crear nueva llamada
+      callRef = push(ref(db, 'calls'));
+      await set(callRef, { status: 'waiting' });
+      onDisconnect(callRef).remove();
 
-    joinBtn.onclick = async () => {
-      try {
-        await initLocal();
-        roomCode = joinInput.value.trim();
-        if (!roomCode) return alert("Ingresa el código de la sala.");
-        joinBtn.disabled = true;
-        createPC();
+      // Generar oferta
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await set(ref(db, `calls/${callRef.key}/offer`), offer);
+      document.getElementById('status').innerText = 'Esperando admin...';
 
-        const offerSnap = await get(ref(db, `calls/${roomCode}/offer`));
-        if (!offerSnap.exists()) return alert("Sala no existe.");
-        await pc.setRemoteDescription(JSON.parse(offerSnap.val()));
+      // Recibir respuesta
+      onValue(ref(db, `calls/${callRef.key}/answer`), async snap => {
+        if (snap.exists() && !pc.currentRemoteDescription) {
+          await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+          document.getElementById('status').innerText = 'Conectado';
+        }
+      });
 
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await set(ref(db, `calls/${roomCode}/answer`), JSON.stringify(answer));
-
-        onChildAdded(ref(db, `calls/${roomCode}/callerCandidates`), async snap => {
-          await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(snap.val())));
-        });
-      } catch (err) {
-        console.error(err);
-        alert("Error al unirse a la sala.");
-      }
+      // Recibir ICE candidates del admin
+      onValue(ref(db, `calls/${callRef.key}/adminCandidates`), snap => {
+        snap.forEach(child => pc.addIceCandidate(new RTCIceCandidate(child.val())));
+      });
     };
-  </script>
-</body>
+  </script></body>
 </html>
