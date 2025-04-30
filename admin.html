@@ -1,29 +1,49 @@
-<!DOCTYPE html>
-<html lang="es">
+<!DOCTYPE html><html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Crear Sala de Llamada</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Panel iOS Style</title>
   <style>
-    body { font-family: sans-serif; margin: 1rem; }
-    h2 { color: #007AFF; }
-    input, button { padding: .5rem; margin: .5rem 0; }
-    input { width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 5px; }
-    button { background: #007AFF; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
-    #codeDisplay { font-weight: bold; margin-top: 1rem; }
-    audio { display: block; margin-top: 1rem; width: 100%; max-width: 300px; }
+    :root {
+      --ios-primary: #007AFF;
+      --ios-background: rgba(242,242,247,0.9);
+      --ios-blur: blur(20px);
+      --ios-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto; background: #f5f5f9; margin:0; min-height:100vh; display:flex; flex-direction:column; }
+    .view { flex:1; display:flex; justify-content:center; align-items:center; }
+    .hidden { display: none !important; }
+    .card { background: var(--ios-background); backdrop-filter: var(--ios-blur); box-shadow: var(--ios-shadow); border-radius:14px; padding:2rem; width:90%; max-width:400px; }
+    h2 { margin-top:0; color:#1c1c1e; }
+    input { width:100%; padding:12px; margin:0.5rem 0; border-radius:10px; border:1px solid rgba(0,0,0,0.1); background:white; }
+    button { width:100%; padding:12px; margin-top:1rem; background:var(--ios-primary); color:white; border:none; border-radius:10px; font-weight:500; cursor:pointer; }
+    button:disabled { opacity:0.5; cursor:default; }
+    #requestsList { list-style:none; padding:0; max-height:60vh; overflow-y:auto; margin:0; }
+    .request { backdrop-filter: var(--ios-blur); background: rgba(255,255,255,0.9); border:1px solid rgba(0,0,0,0.03); border-radius:18px; margin:0.5rem 0; padding:1rem; box-shadow:var(--ios-shadow); }
+    .request h4 { margin:0 0 0.5rem 0; color:#1c1c1e; }
+    .request p { margin:0.25rem 0; color:#3a3a3c; font-size:0.9rem; }
+    .request button { width:auto; padding:8px 16px; margin-top:0.5rem; }
   </style>
 </head>
 <body>
-  <h2>Administrador: Crear Sala</h2>
-  <input type="text" id="roomInput" placeholder="Ingresa un código único">
-  <button id="createBtn">Crear Sala</button>
-  <p id="codeDisplay" hidden>Sala creada: <span id="roomCode"></span></p>
-  <audio id="remoteAudioAdmin" controls autoplay hidden></audio>  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, set, push, onValue, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+  <div id="loginView" class="view">
+    <div class="card">
+      <h2>Admin Login</h2>
+      <input type="email" id="email" placeholder="Email" />
+      <input type="password" id="password" placeholder="Contraseña" />
+      <button id="loginBtn">Ingresar</button>
+    </div>
+  </div>  <div id="panelView" class="view hidden">
+    <div class="card">
+      <h2>Solicitudes</h2>
+      <ul id="requestsList"></ul>
+      <button id="logoutBtn">Cerrar Sesión</button>
+    </div>
+  </div>  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+    import { getDatabase, ref, onChildAdded, remove } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js';
 
-    // --- Configuración Firebase ---
     const firebaseConfig = {
       apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
       authDomain: "the-pic-c437e.firebaseapp.com",
@@ -34,69 +54,64 @@
       appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
     };
     const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
     const db = getDatabase(app);
 
-    // STUN/TURN (reemplaza TURN con tu servidor si lo tienes)
-    const iceConfig = {
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" }
-      ]
+    const loginView = document.getElementById('loginView');
+    const panelView = document.getElementById('panelView');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const requestsList = document.getElementById('requestsList');
+
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        loginView.classList.add('hidden');
+        panelView.classList.remove('hidden');
+        listenRequests();
+      } else {
+        loginView.classList.remove('hidden');
+        panelView.classList.add('hidden');
+        requestsList.innerHTML = '';
+      }
+    });
+
+    loginBtn.onclick = async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (e) {
+        alert('Credenciales inválidas');
+      }
     };
 
-    let pc, localStream, roomCode = "";
-    const roomInput   = document.getElementById("roomInput");
-    const createBtn   = document.getElementById("createBtn");
-    const codeDisplay = document.getElementById("codeDisplay");
-    const roomCodeSpan= document.getElementById("roomCode");
-    const remoteAudio = document.getElementById("remoteAudioAdmin");
+    logoutBtn.onclick = () => signOut(auth);
 
-    async function initLocal() {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    function listenRequests() {
+      const reqRef = ref(db, 'requests');
+      onChildAdded(reqRef, snap => {
+        const data = snap.val();
+        const key = snap.key;
+        // Crear elemento si no existe
+        if (document.getElementById('req-' + key)) return;
+        const li = document.createElement('li');
+        li.id = 'req-' + key;
+        li.className = 'request';
+        li.innerHTML = `
+          <h4>${data.type === 'chat' ? 'Chat' : 'Llamada'} #${key}</h4>
+          <p><strong>Usuario:</strong> ${data.name}</p>
+          <p><strong>Ubicación:</strong> ${data.lat || '-'}, ${data.lng || '-'}</p>
+          <p><strong>Navegador:</strong> ${data.userAgent}</p>
+          <button onclick="handle('${key}','${data.type}')">Atender</button>
+        `;
+        requestsList.prepend(li);
+      });
     }
 
-    function createPC() {
-      pc = new RTCPeerConnection(iceConfig);
-      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-      pc.ontrack = e => {
-        remoteAudio.hidden = false;
-        remoteAudio.srcObject = e.streams[0];
-      };
-
-      pc.onicecandidate = e => {
-        if (e.candidate)
-          push(ref(db, `calls/${roomCode}/callerCandidates`),
-               JSON.stringify(e.candidate));
-      };
-    }
-
-    createBtn.onclick = async () => {
-      try {
-        await initLocal();
-        roomCode = roomInput.value.trim();
-        if (!roomCode) return alert("Ingresa un código único.");
-        createBtn.disabled = true;
-        createPC();
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await set(ref(db, `calls/${roomCode}/offer`), JSON.stringify(offer));
-
-        roomCodeSpan.textContent = roomCode;
-        codeDisplay.hidden = false;
-
-        onValue(ref(db, `calls/${roomCode}/answer`), async snap => {
-          if (!snap.exists()) return;
-          await pc.setRemoteDescription(JSON.parse(snap.val()));
-        });
-
-        onChildAdded(ref(db, `calls/${roomCode}/calleeCandidates`), async snap => {
-          await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(snap.val())));
-        });
-      } catch (err) {
-        console.error(err);
-        alert("Error creando sala.");
-      }
+    window.handle = (key, type) => {
+      const url = type === 'chat' ? `chat.html?room=${key}` : `call.html?room=${key}`;
+      window.open(url, '_blank');
+      remove(ref(db, 'requests/' + key));
     };
   </script></body>
 </html>

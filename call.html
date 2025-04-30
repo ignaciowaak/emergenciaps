@@ -2,28 +2,114 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Unirse a Sala</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ayuda en Tiempo Real</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: sans-serif; margin: 1rem; }
-    h2 { color: #007AFF; }
-    input, button { padding: .5rem; margin: .5rem 0; }
-    input { width: 100%; max-width: 300px; border: 1px solid #ccc; border-radius: 5px; }
-    button { background: #007AFF; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
-    audio { display: block; margin-top: 1rem; width: 100%; max-width: 300px; }
+    /* Esta regla oculta los elementos que tengan la clase 'hidden' */
+    .hidden {
+      display: none;
+    }
+    :root {
+      --ios-primary: #007AFF;
+      --ios-background: rgba(242,242,247,0.9);
+      --ios-blur: blur(20px);
+      --ios-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f9; margin:0; min-height:100vh;
+      display:flex; justify-content:center; align-items:center;
+      /* Esto asegura que si hay varias tarjetas visibles por error, intenten centrarse,
+         aunque el display: none debería evitar que se muestren juntas. */
+      flex-wrap: wrap; /* Permite que las tarjetas salten de línea si el espacio es limitado */
+      gap: 20px; /* Espacio entre tarjetas si por alguna razón se muestran juntas */
+    }
+    .card {
+      background: var(--ios-background); backdrop-filter: var(--ios-blur);
+      box-shadow: var(--ios-shadow); border-radius:14px;
+      padding:2rem; width:90%; max-width:400px; text-align:center;
+      /* Añadido flex-shrink: 0 para que no se encojan si hay varias */
+      flex-shrink: 0;
+    }
+    h2 { margin-top:0; color:#1c1c1e; }
+    select, input, button {
+      width:100%; margin:.5rem 0; padding:.75rem;
+      border-radius:10px; border:1px solid rgba(0,0,0,0.1);
+      font-size:1rem; box-sizing: border-box;
+    }
+    button {
+      background: var(--ios-primary); color:#fff; border:none;
+      font-weight:500; cursor:pointer;
+    }
+    button:active { transform:scale(0.98); }
+    #status { margin-top:1rem; font-weight:500; color:#3a3a3c; }
+    #remoteAudio { margin-top:1rem; width:100%; display: none; } /* Oculto por defecto */
+    /* Aseguramos que las secciones internas usen flexbox */
+    #chatSection, #callSection { display:flex; flex-direction:column; gap:1rem; }
+     /* Aseguramos que la requestSection use flexbox para alinear sus elementos */
+    #requestSection { display:flex; flex-direction:column; gap:1rem; align-items: center; }
+    #requestSection h2,
+    #requestSection select,
+    #requestSection input,
+    #requestSection button,
+    #requestSection #status {
+        width: 100%; /* Asegura que los elementos dentro tomen el ancho completo */
+        margin: 0.5rem 0; /* Ajusta márgenes si es necesario */
+    }
+
+
+    #messages { flex:1; overflow-y:auto; border:1px solid rgba(0,0,0,0.1); border-radius:10px; padding:1rem; background:#fff; max-height:200px; text-align:left; display: flex; flex-direction: column; }
+    .message { margin:0.25rem 0; word-wrap: break-word; }
+    .message span { display: block; }
+    .sent { text-align:right; color:#000; }
+    .sent span:first-child { color: var(--ios-primary); font-weight: 500; font-size: 0.9em; } /* Nombre un poco más pequeño */
+     .sent span:last-child { margin-top: 0.1em; } /* Pequeño espacio entre nombre y texto */
+
+    .received { text-align:left; color:#000; }
+    .received span:first-child { color: #5856d6; font-weight: 500; font-size: 0.9em; } /* Nombre un poco más pequeño */
+     .received span:last-child { margin-top: 0.1em; } /* Pequeño espacio entre nombre y texto */
+
+
   </style>
 </head>
 <body>
-  <h2>Ingresar a Sala</h2>
-  <input type="text" id="joinInput" placeholder="Código de sala">
-  <button id="joinBtn">Unirse</button>
-  <audio id="remoteAudioJoin" controls autoplay hidden></audio>  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getDatabase, ref, get, set, push, onChildAdded } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+  <div class="card" id="requestSection">
+    <h2>¿Necesitas Ayuda?</h2>
+    <select id="requestType">
+      <option value="chat">Chat de Emergencia</option>
+      <option value="call">Llamada de Emergencia</option>
+    </select>
+    <input type="text" id="userName" placeholder="Tu nombre (opcional)">
+    <button id="btnRequest">Enviar Solicitud</button>
+    <p id="status">Estado: Listo para enviar</p>
+  </div>
 
-    // --- Configuración Firebase ---
-    const firebaseConfig = {
-      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulnrrINB7cI",
+  <div class="card hidden" id="waitingSection">
+    <h2>Solicitud Enviada</h2>
+    <p id="waitingMsg">Espera a que un asistente acepte tu solicitud...</p>
+    <button id="cancelBtn">Cancelar Solicitud</button>
+  </div>
+
+  <div class="card hidden" id="chatSection">
+    <h2>Chat de Emergencia</h2>
+    <div id="messages"></div>
+    <input type="text" id="chatInput" placeholder="Escribe tu mensaje">
+    <button id="sendChatBtn">Enviar</button>
+  </div>
+
+  <div class="card hidden" id="callSection">
+    <h2>Llamada de Emergencia</h2>
+    <p id="callStatus">Conectando...</p>
+    <button id="hangUpBtn" disabled>Colgar</button>
+    <audio id="remoteAudio" controls autoplay></audio>
+  </div>
+
+  <script type="module">
+    import { initializeApp }      from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
+    import { getDatabase, ref, push, serverTimestamp, onValue, set, remove, off } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js';
+
+    const cfg = {
+      apiKey: "AIzaSyA_USvfSXAqZf7hQhJCon0WulrINB7cI", // Reemplaza con tu API Key real
       authDomain: "the-pic-c437e.firebaseapp.com",
       databaseURL: "https://the-pic-c437e-default-rtdb.firebaseio.com",
       projectId: "the-pic-c437e",
@@ -31,62 +117,468 @@
       messagingSenderId: "750954597180",
       appId: "1:750954597180:web:d7b67c6b60f4d3bb17ec39"
     };
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
+    const app = initializeApp(cfg);
+    const db  = getDatabase(app);
 
-    const iceConfig = {
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" }
-      ]
-    };
+    // Elementos
+    const reqSec     = document.getElementById('requestSection');
+    const waitSec    = document.getElementById('waitingSection');
+    const chatSec    = document.getElementById('chatSection');
+    const callSec    = document.getElementById('callSection');
+    const statusEl   = document.getElementById('status');
+    const waitingMsg = document.getElementById('waitingMsg');
 
-    let pc, localStream, roomCode = "";
-    const joinInput   = document.getElementById("joinInput");
-    const joinBtn     = document.getElementById("joinBtn");
-    const remoteAudio = document.getElementById("remoteAudioJoin");
+    const btnReq     = document.getElementById('btnRequest');
+    const btnCancel  = document.getElementById('cancelBtn');
+    const typeSel    = document.getElementById('requestType');
+    const nameInput  = document.getElementById('userName');
 
-    async function initLocal() {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    let roomKey, reqType;
+    let statusListener = null; // Para guardar la referencia del listener del estado
+    let pc, localStream; // Para WebRTC
+
+    // Asegurarse de que solo la primera sección sea visible al cargar la página (esto ya se hace con la clase hidden en el HTML, pero no está de más revisarlo)
+    function setInitialDisplayState() {
+        reqSec.classList.remove('hidden');
+        waitSec.classList.add('hidden');
+        chatSec.classList.add('hidden');
+        callSec.classList.add('hidden');
     }
 
-    function createPC() {
-      pc = new RTCPeerConnection(iceConfig);
-      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    // Llamar a la función al cargar el script (aunque el HTML/CSS debería ser suficiente)
+    setInitialDisplayState();
 
-      pc.ontrack = e => {
-        remoteAudio.hidden = false;
-        remoteAudio.srcObject = e.streams[0];
-      };
 
-      pc.onicecandidate = e => {
-        if (e.candidate)
-          push(ref(db, `calls/${roomCode}/calleeCandidates`), JSON.stringify(e.candidate));
-      };
-    }
+    btnReq.onclick = () => {
+      reqType = typeSel.value;
+      const name = nameInput.value.trim() || 'Anónimo';
+      // Validar que se ha intentado pedir micrófono para llamada antes de enviar solicitud?
+      // No, la solicitud es solo el inicio. El acceso al mic se pide al iniciar la llamada.
 
-    joinBtn.onclick = async () => {
-      try {
-        await initLocal();
-        roomCode = joinInput.value.trim();
-        if (!roomCode) return alert("Ingresa el código de la sala.");
-        joinBtn.disabled = true;
-        createPC();
+      const newReqRef = push(ref(db, 'requests')); // Crea una nueva entrada con ID único
+      roomKey = newReqRef.key; // Guarda el ID generado
 
-        const offerSnap = await get(ref(db, `calls/${roomCode}/offer`));
-        if (!offerSnap.exists()) return alert("Sala no existe.");
-        await pc.setRemoteDescription(JSON.parse(offerSnap.val()));
+      // Establece los datos de la solicitud en la base de datos
+      set(newReqRef, { type: reqType, name, status: 'pending', timestamp: serverTimestamp() })
+      .then(() => {
+        // Mostrar espera SOLO si la solicitud se envió correctamente
+        reqSec.classList.add('hidden');
+        waitSec.classList.remove('hidden');
+        waitingMsg.textContent = `Esperando a que un asistente acepte tu solicitud (${reqType === 'chat' ? 'Chat' : 'Llamada'})...`;
+        statusEl.textContent = ''; // Limpiar estado inicial
+        console.log(`Solicitud ${roomKey} (${reqType}) enviada.`);
 
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await set(ref(db, `calls/${roomCode}/answer`), JSON.stringify(answer));
+        // Escuchar cambios de estado en la solicitud específica usando el roomKey
+        // Detener escucha previa si existiera (aunque no debería haberla en este flujo)
+        if(statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
 
-        onChildAdded(ref(db, `calls/${roomCode}/callerCandidates`), async snap => {
-          await pc.addIceCandidate(new RTCIceCandidate(JSON.parse(snap.val())));
+        statusListener = onValue(ref(db, `requests/${roomKey}/status`), snap => {
+          const st = snap.val();
+          console.log(`Estado de la solicitud ${roomKey}: ${st}`); // Log para depuración
+          if (st === 'accepted') {
+            console.log('Solicitud aceptada. Inicializando:', reqType);
+            // Detener escucha de estado una vez aceptada
+            if(statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
+             statusListener = null; // Limpiar referencia
+
+            waitSec.classList.add('hidden');
+            if (reqType === 'chat') initChat();
+            else initCall();
+
+          } else if (st === 'cancelled') {
+            console.log('Solicitud cancelada.');
+            // Detener escucha de estado y recargar
+            if(statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
+            statusListener = null; // Limpiar referencia
+            alert('Tu solicitud fue cancelada.'); // O mostrar un mensaje en la UI
+            location.reload(); // Recargar para volver al estado inicial
+
+          } else if (st === null && roomKey) { // Si la entrada se elimina completamente (ej. por el admin)
+              console.log('Solicitud eliminada por admin.');
+              if(statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
+              statusListener = null; // Limpiar referencia
+              alert('Tu solicitud ha sido cerrada o eliminada.'); // O mostrar mensaje
+              location.reload();
+          }
         });
-      } catch (err) {
-        console.error(err);
-        alert("Error al unirse a la sala.");
-      }
+      })
+      .catch(error => {
+          console.error("Error al enviar la solicitud:", error);
+          statusEl.textContent = `Error al enviar solicitud: ${error.message}`;
+          // Opcional: permitir al usuario intentarlo de nuevo sin recargar
+          // Volver a mostrar el botón de enviar solicitud si hubo error?
+          // reqSec.classList.remove('hidden');
+          // waitSec.classList.add('hidden');
+      });
     };
-  </script></body>
+
+    btnCancel.onclick = () => {
+       if (roomKey) {
+           // Establecer estado 'cancelled' para notificar al admin (opcional)
+           // Esto es asíncrono, la eliminación se hace después
+           set(ref(db, `requests/${roomKey}/status`), 'cancelled')
+           .catch(error => {
+                console.error("Error al actualizar el estado a cancelled:", error);
+                // No bloqueamos la eliminación por este error
+           })
+           .finally(() => {
+               // Eliminar la solicitud de la base de datos
+               remove(ref(db, `requests/${roomKey}`))
+               .then(() => {
+                   console.log('Solicitud cancelada y eliminada.');
+                   // Detener escucha si aún está activa
+                   if(statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
+                   statusListener = null; // Limpiar referencia
+                   location.reload(); // Recargar para limpiar y volver al inicio
+               })
+               .catch(error => {
+                   console.error("Error al eliminar la solicitud:", error);
+                   alert('Error al cancelar la solicitud. Por favor, recarga la página.');
+                   // No se pudo eliminar, pero detenemos escucha y recargamos de todos modos
+                   if(statusListener) off(ref(db, `requests/${roomKey}/status`), statusListener);
+                   statusListener = null; // Limpiar referencia
+                   location.reload();
+               });
+           });
+       } else {
+           // Si no hay roomKey (ej. nunca se envió la solicitud), simplemente recargar
+           console.log('No hay solicitud activa para cancelar.');
+           location.reload();
+       }
+    };
+
+    // — Chat —
+    function initChat() {
+      // Asegurarse de que solo la sección de chat es visible
+      reqSec.classList.add('hidden');
+      waitSec.classList.add('hidden');
+      callSec.classList.add('hidden');
+      chatSec.classList.remove('hidden');
+
+      const msgsEl = document.getElementById('messages');
+      const chatInput = document.getElementById('chatInput');
+      const sendChatBtn = document.getElementById('sendChatBtn');
+
+      // Limpiar listeners previos del botón por si acaso (no debería pasar en este flujo, pero buena práctica)
+      // sendChatBtn.onclick = null; // No es la mejor forma, mejor usar addEventListener y removeEventListener
+      const handleSendClick = () => {
+         const text = chatInput.value.trim();
+         if (!text || !roomKey) return;
+
+         const userName = nameInput.value.trim() || 'Usuario';
+         push(ref(db, `chats/${roomKey}`), { user: userName, text, timestamp: serverTimestamp() })
+         .then(() => {
+              chatInput.value = '';
+         })
+         .catch(error => {
+             console.error("Error al enviar mensaje:", error);
+         });
+      };
+      sendChatBtn.onclick = handleSendClick; // Asigna la función al clic
+
+      // Limpiar listeners previos del input keypress
+      // chatInput.removeEventListener('keypress', handleKeyPress); // Necesitaríamos guardar la referencia a la función si la definiéramos afuera
+       chatInput.addEventListener('keypress', function(event) {
+           if (event.key === 'Enter') {
+               event.preventDefault();
+               sendChatBtn.click();
+           }
+       });
+
+
+      // Listener para nuevos mensajes
+      // Detener listener previo si existiera
+      // off(ref(db, `chats/${roomKey}`), messageListener); // Necesitaríamos guardar la referencia
+
+      onValue(ref(db, `chats/${roomKey}`), snap => {
+        msgsEl.innerHTML = '';
+        if (snap.exists()) {
+            const messages = snap.val();
+            const sortedMessages = Object.values(messages).sort((a, b) => a.timestamp - b.timestamp);
+
+            sortedMessages.forEach(m => {
+              const d = document.createElement('div');
+              const userName = nameInput.value.trim() || 'Usuario';
+              // Comparar el nombre enviado con el nombre en el mensaje
+              const isSent = m.user === userName;
+              d.className = 'message ' + (isSent ? 'sent' : 'received');
+
+              // Mostrar nombre y texto
+              // Si tu admin usa un nombre diferente (ej: "Admin"), esto funcionará bien.
+              // Si el admin reenvía el mismo nombre de usuario, la lógica 'isSent' deberá ajustarse.
+              d.innerHTML = `<span>${m.user}</span><span>${m.text}</span>`;
+
+              msgsEl.append(d);
+            });
+        }
+        // Auto-scroll al final
+        msgsEl.scrollTop = msgsEl.scrollHeight;
+      });
+    }
+
+    // — Llamada —
+    async function initCall() {
+      // Asegurarse de que solo la sección de llamada es visible
+      reqSec.classList.add('hidden');
+      waitSec.classList.add('hidden');
+      chatSec.classList.add('hidden');
+      callSec.classList.remove('hidden');
+
+
+      const callStatusEl = document.getElementById('callStatus');
+      const hangUpBtn = document.getElementById('hangUpBtn');
+      const remoteAudio = document.getElementById('remoteAudio');
+
+      callStatusEl.textContent = 'Solicitando acceso al micrófono...';
+      try {
+          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          console.log('Acceso al micrófono concedido.');
+          callStatusEl.textContent = 'Conectando llamada...';
+      } catch (error) {
+          console.error('Error al obtener acceso al micrófono:', error);
+          callStatusEl.textContent = 'Error: Permite acceso al micrófono.';
+          alert('Necesitas permitir el acceso al micrófono para la llamada.');
+          // Limpiar y volver al estado inicial si falla el acceso al micrófono
+          endCall(); // Usa la función de limpieza
+          return;
+      }
+
+      // Configuración RTCPeerConnection
+      pc = new RTCPeerConnection({
+          iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+          ]
+      });
+      console.log('RTCPeerConnection creada.');
+
+      // Añadir pista de audio local al peer connection
+      localStream.getTracks().forEach(track => {
+          console.log('Añadiendo pista de audio local.');
+          pc.addTrack(track, localStream);
+      });
+
+      // Manejar pista remota
+      pc.ontrack = event => {
+        console.log('Pista remota recibida:', event.track.kind);
+        if (event.track.kind === 'audio') {
+           remoteAudio.srcObject = event.streams[0];
+           remoteAudio.style.display = 'block';
+           // hangUpBtn.disabled = false; // Habilitar al conectar completamente, no solo al recibir pista
+           // callStatusEl.textContent = 'Llamada Conectada'; // Actualizar al estado de conexión
+           console.log('Audio remoto adjuntado.');
+        }
+      };
+
+      // Manejar candidatos ICE locales
+      pc.onicecandidate = event => {
+          if (event.candidate) {
+              console.log('Candidato ICE local generado:', event.candidate);
+              push(ref(db, `calls/${roomKey}/calleeCandidates`), JSON.stringify(event.candidate))
+              .catch(error => console.error('Error al enviar candidato ICE local:', error));
+          } else {
+              console.log('Fin de candidatos ICE locales.');
+          }
+      };
+
+       // Manejar cambios de estado de conexión ICE
+      pc.oniceconnectionstatechange = () => {
+          console.log(`Estado ICE: ${pc.iceConnectionState}`);
+           callStatusEl.textContent = `Estado ICE: ${pc.iceConnectionState}`;
+           if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+                console.log('Conexión ICE terminada o fallida.');
+                // endCall(); // Ya se maneja en onconnectionstatechange, pero podría ser redundante aquí
+           }
+      };
+
+       // Manejar cambios de estado de conexión principal
+      pc.onconnectionstatechange = () => {
+          console.log(`Estado de Conexión: ${pc.connectionState}`);
+           callStatusEl.textContent = `Estado: ${pc.connectionState}`;
+           if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+               console.log('Conexión terminada o fallida.');
+               endCall(); // Limpiar al terminar la conexión
+           } else if (pc.connectionState === 'connected') {
+               console.log('Conexión establecida!');
+                callStatusEl.textContent = 'Llamada Conectada';
+                hangUpBtn.disabled = false; // Habilitar colgar cuando esté conectado
+           }
+      };
+
+      // Manejar errores en la conexión Peer
+      pc.onerror = (error) => {
+          console.error('Error en RTCPeerConnection:', error);
+          callStatusEl.textContent = `Error: ${error.message}`;
+          alert('Se produjo un error en la llamada.');
+          endCall();
+      };
+
+
+      // --- Lógica para recibir oferta (viene del admin) ---
+      // El usuario que solicita (callee) espera la oferta del admin (caller)
+      // Limpiar listener previo si existiera
+      // off(ref(db, `calls/${roomKey}/offer`), offerListener); // Necesitaríamos guardar la referencia
+
+      onValue(ref(db, `calls/${roomKey}/offer`), async snap => {
+          if (!snap.exists()) {
+              console.log('No hay oferta en la base de datos.');
+              return;
+          }
+          const offer = JSON.parse(snap.val());
+          console.log('Oferta recibida:', offer);
+
+          try {
+              // Verificar el estado de signaling para evitar errores al establecer descripción
+               if (pc.signalingState !== 'stable') {
+                    console.warn('Estado de señalización no es estable, esperando...');
+                    // Podrías necesitar esperar un poco o manejar estados intermedios
+                    // Por ahora, intentamos establecerla directamente.
+               }
+              await pc.setRemoteDescription(new RTCSessionDescription(offer));
+              console.log('Descripción remota (oferta) establecida.');
+
+              // Crear y enviar respuesta (answer)
+              // Crear y enviar respuesta (answer)
+const answer = await pc.createAnswer();
+console.log('Respuesta creada:', answer);
+await pc.setLocalDescription(answer);
+console.log('Descripción local (respuesta) establecida.');
+
+// Enviar respuesta a la base de datos para que el admin la recoja
+await set(ref(db, `calls/${roomKey}/answer`), JSON.stringify(answer));
+console.log('Respuesta enviada a Firebase.');
+
+// Una vez que la respuesta se envía, la conexión debería empezar a establecerse
+// El estado de conexión 'connecting' o 'connected' se manejará en pc.onconnectionstatechange
+callStatusEl.textContent = 'Estableciendo conexión...';
+
+
+}
+catch (error) {
+    console.error('Error al procesar la oferta o crear respuesta:', error);
+    callStatusEl.textContent = `Error en la llamada: ${error.message}`;
+    alert('Error al iniciar la llamada.');
+    endCall(); // Limpiar en caso de error
+}
+});
+
+// --- Lógica para recibir candidatos ICE del caller (admin) ---
+// Limpiar listener previo si existiera
+// off(ref(db, `calls/${roomKey}/callerCandidates`), callerCandidatesListener); // Necesitaríamos guardar la referencia
+
+onValue(ref(db, `calls/${roomKey}/callerCandidates`), async snap => {
+    if (!snap.exists()) {
+        console.log('No hay candidatos del caller (admin) aún.');
+        return;
+    }
+    const candidates = snap.val();
+    console.log('Candidatos del caller recibidos:', candidates);
+    
+    // Añadir cada candidato recibido
+    // Es importante añadir los candidatos tan pronto como se reciben después de establecer la descripción remota
+    for (const key in candidates) {
+        try {
+            const candidate = JSON.parse(candidates[key]);
+            // await pc.addIceCandidate(new RTCIceCandidate(candidate)); // addIceCandidate es asíncrono
+            pc.addIceCandidate(new RTCIceCandidate(candidate))
+                .then(() => console.log('Candidato ICE del caller añadido:', candidate))
+                .catch(error => console.error('Error al añadir candidato ICE del caller:', error));
+            
+            // Opcional: Eliminar el candidato de Firebase para evitar procesarlo de nuevo
+            // remove(ref(db, `calls/${roomKey}/callerCandidates/${key}`));
+        } catch (error) {
+            console.error('Error al parsear candidato ICE del caller:', error);
+        }
+    }
+    // Considerar eliminar el listener después de un tiempo o cuando se establece la conexión ICE
+});
+
+// --- Función para finalizar la llamada y limpiar recursos ---
+function endCall() {
+    console.log('Finalizando llamada...');
+    
+    // Detener listeners de Firebase relacionados con la llamada
+    if (roomKey) {
+        off(ref(db, `calls/${roomKey}/offer`));
+        off(ref(db, `calls/${roomKey}/callerCandidates`));
+        // No detenemos el listener principal de status, ese recargará la página
+    }
+    
+    
+    if (pc) {
+        pc.close();
+        pc = null;
+        console.log('RTCPeerConnection cerrada.');
+    }
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop()); // Detener las pistas locales
+        localStream = null;
+        console.log('Pistas locales detenidas.');
+    }
+    if (remoteAudio) {
+        remoteAudio.srcObject = null; // Desvincular el stream remoto
+        remoteAudio.style.display = 'none'; // Ocultar el elemento audio
+        console.log('Audio remoto limpiado.');
+    }
+    
+    // Limpiar la entrada de la llamada en la base de datos - Debería hacerlo el admin principalmente,
+    // pero el usuario también puede intentar limpiar su lado.
+    if (roomKey) {
+        // El admin debería eliminar la solicitud principal. El usuario solo limpia sus datos de llamada.
+        // remove(ref(db, `calls/${roomKey}`)); // Esto podría ser agresivo si el admin aún lo necesita
+        console.log('Intento local de limpiar datos de llamada en Firebase.');
+        // set(ref(db, `calls/${roomKey}/status`), 'ended'); // Otra opción es poner un estado 'ended'
+        // remove(ref(db, `calls/${roomKey}/calleeCandidates`)); // Limpiar solo los candidatos del usuario
+        // remove(ref(db, `calls/${roomKey}/answer`)); // Limpiar solo la respuesta del usuario
+    }
+    
+    
+    callStatusEl.textContent = 'Llamada finalizada';
+    hangUpBtn.disabled = true; // Deshabilitar el botón de colgar
+    
+    // Opcional: Mostrar un mensaje o volver a la pantalla inicial
+    setTimeout(() => { // Dar tiempo para leer el estado final
+        // Recargar para volver al estado inicial (el listener de status='cancelled' o null también hace esto)
+        if (!statusListener) { // Solo recargar si el listener principal ya no está activo (ej. si endCall se llamó por un error antes de que el admin cancelara)
+            location.reload();
+        } else {
+            console.log("El listener de status principal se encargará de recargar.");
+        }
+    }, 2000); // Recargar después de 2 segundos
+}
+
+// Asigna la función endCall al botón colgar
+// Asegúrate de que el listener solo se añada una vez al inicializar la llamada
+hangUpBtn.onclick = endCall;
+
+
+// Manejar cierre de ventana para limpiar recursos
+window.addEventListener('beforeunload', async () => {
+    console.log('Limpiando recursos antes de cerrar la ventana...');
+    // No hay garantía de que estas operaciones asíncronas se completen antes de que la ventana se cierre.
+    if (pc && pc.connectionState !== 'closed') {
+        console.log('Cerrando RTCPeerConnection en beforeunload.');
+        pc.close();
+    }
+    if (localStream) {
+        console.log('Deteniendo pistas locales en beforeunload.');
+        localStream.getTracks().forEach(track => track.stop());
+    }
+    // Intentar limpiar en Firebase (mejor si el admin lo hace, pero se intenta)
+    if (roomKey) {
+        try {
+            // Eliminar datos de llamada específicos del usuario
+            await remove(ref(db, `calls/${roomKey}/calleeCandidates`));
+            await remove(ref(db, `calls/${roomKey}/answer`));
+            // No eliminamos la solicitud principal ni la oferta del admin aquí
+            console.log('Datos de Firebase del usuario intentados limpiar al cerrar.');
+        } catch (e) {
+            console.warn('No se pudieron limpiar todos los datos de Firebase al cerrar:', e);
+        }
+    }
+    // No detenemos listeners aquí, la página se va a cerrar.
+});
+
+}
+</script> 
+</body> 
 </html>
