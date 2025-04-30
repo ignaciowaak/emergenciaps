@@ -6,6 +6,7 @@
   <h2>Usuario - Iniciar Llamada</h2>
   <button id="startCall">Iniciar Llamada</button>
   <p id="status">Esperando admin...</p>
+  <audio id="remoteAudio" autoplay></audio>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -47,6 +48,12 @@
         if (e.candidate) {
           push(ref(db, `calls/${callId}/offerCandidates`), e.candidate.toJSON());
         }
+      };
+
+      peerConnection.ontrack = (event) => {
+        const remoteAudio = document.getElementById("remoteAudio");
+        remoteAudio.srcObject = event.streams[0];
+        remoteAudio.play();
       };
 
       const offer = await peerConnection.createOffer();
